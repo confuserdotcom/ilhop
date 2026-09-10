@@ -5,12 +5,12 @@ current_phase: 01
 current_phase_name: Regression Recovery
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-09-10T13:13:07.922Z"
+last_updated: "2026-09-10T13:20:33.904Z"
 last_activity: 2026-09-10
 last_activity_desc: Roadmap created, 12/12 v1 requirements mapped across 5 phases
-state_head: cbadb01cbac561b34e9e624c3b206d192bc73bb3
+state_head: e97a50b9ac95bad6e4807d71ae92d9c5b1bc8927
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 
 ## Current Position
 
-Phase: 1 of 5 (Regression Recovery)
+Phase: 1 of 6 (Regression Recovery)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
 Last activity: 2026-09-10 — Roadmap created, 12/12 v1 requirements mapped across 5 phases
@@ -77,6 +77,10 @@ None yet.
 - **Phase 1 defects are unreproduced.** HOP-02 and HOP-03 are user-reported and were both recorded tested-good on 2026-09-09 — suspected regressions from the `9d1f129` revert. Reproduction gates the fix.
 - **Escape hatch before testing.** Any test of a change that synthesizes a hold needs a second input channel already open (second machine ssh'd in) *before* the run, not improvised after — recovering a wedged primary keyboard otherwise means a hard power-reset.
 - **input-leap archived read-only (July 2026).** The dependency is unmaintained upstream; deskflow inherits the identical libei/libportal defects. Settled 2026-09-10, not re-litigated this milestone, but it is a live dependency risk.
+
+### Roadmap Evolution
+
+- Phase 03.1 inserted after Phase 3: Window-Centre Landing (HOP-05) - planned scope raised during Phase 1 discussion, placed before Phase 5 so packaging does not document landing behaviour this phase changes
 
 ## Deferred Items
 

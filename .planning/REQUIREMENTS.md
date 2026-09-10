@@ -12,6 +12,7 @@ Requirements for the first packaged release. Each maps to exactly one roadmap ph
 - [ ] **HOP-01**: The first chord pressed after a hop registers on the destination machine — no eaten keystroke, no modifier left latched in `CGEventSourceFlagsState`. The fix must not re-press modifiers through `ydotool` (that mechanism wedged real input on 2026-09-10 and is a closed decision).
 - [ ] **HOP-02**: The hop fires on every press of the bind — the intermittent "sometimes doesn't fire" report is reproduced, root-caused, and closed. Reproduction precedes any fix.
 - [ ] **HOP-03**: The pointer lands dead centre of the destination screen on every hop, in both directions — never at an edge, never off-centre.
+- [ ] **HOP-05**: The pointer lands at the centre of the window nearest the edge it crossed, and that window takes keyboard focus on arrival. With exactly one window open it lands at that window's centre; with none, it falls back to screen centre. Screen centre is not the target — on a two-window Mac it puts the cursor in the gap between them. Raised during Phase 1 discussion (`.planning/phases/01-regression-recovery/01-CONTEXT.md` D-19/D-20); supersedes HOP-03's screen-centre target once it lands.
 - [ ] **HOP-04**: Mac→Ryuk hop completes within the same ~50ms budget as Ryuk→Mac, warm or cold — the current ssh return leg (40–110ms warm, ~1.6s on a lapsed launchd control master) is brought into budget without reintroducing an awaited journald confirmation in the hot path.
 
 ### Focus Chain
@@ -72,6 +73,7 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | HOP-02 | Phase 1 | Pending |
 | HOP-03 | Phase 1 | Pending |
 | HOP-04 | Phase 2 | Pending |
+| HOP-05 | Phase 3.1 | Pending |
 | FOCUS-01 | Phase 3 | Pending |
 | FOCUS-02 | Phase 3 | Pending |
 | DIAG-01 | Phase 4 | Pending |
@@ -82,8 +84,8 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | PKG-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 12 total
-- Mapped to phases: 12 ✓
+- v1 requirements: 13 total
+- Mapped to phases: 13 ✓
 - Unmapped: 0 ✓
 - Duplicates (a requirement in two phases): 0 ✓
 
@@ -94,6 +96,7 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | Phase 1 — Regression Recovery | HOP-02, HOP-03 | 2 |
 | Phase 2 — Clean Handoff | HOP-01, HOP-04 | 2 |
 | Phase 3 — Focus Chain Precision | FOCUS-01, FOCUS-02 | 2 |
+| Phase 3.1 — Window-Centre Landing | HOP-05 | 1 |
 | Phase 4 — The ilhop Surface | DIAG-01, DIAG-02, PKG-04 | 3 |
 | Phase 5 — Standalone Install | PKG-01, PKG-02, PKG-03 | 3 |
 
@@ -107,4 +110,4 @@ cannot be simulated at all. A modifier-flag read alone is not proof.
 
 ---
 *Requirements defined: 2026-09-10*
-*Last updated: 2026-09-10 after roadmap creation (traceability populated)*
+*Last updated: 2026-09-10 after adding HOP-05 (Phase 3.1 inserted)*
