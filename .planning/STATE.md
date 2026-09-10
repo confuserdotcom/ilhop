@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
-status: planning
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-09-10T17:58:09.278Z"
+status: executing
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-09-10T18:41:58.771Z"
 last_activity: 2026-09-10
-last_activity_desc: Roadmap created, 12/12 v1 requirements mapped across 5 phases
-state_head: a2f2c523f54687d9bb49bd19acfb1491fc5ddb97
+last_activity_desc: Phase 01 execution started
+state_head: 683575e3f62dbfb81d4948e804db98865a51ae8d
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-10)
 
 **Core value:** Pressing the hop key always lands you on the other machine, ready to type, with no lost keystroke and no wedged input device.
-**Current focus:** Phase 1 — Regression Recovery
+**Current focus:** Phase 01 — Regression Recovery
 
 ## Current Position
 
-Phase: 1 of 6 (Regression Recovery)
-Plan: 1 of 6 in current phase
-Status: Planned — ready to execute
-Last activity: 2026-09-10 — Roadmap created, 12/12 v1 requirements mapped across 5 phases
+Phase: 01 (Regression Recovery) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-09-10 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 15min | 3 tasks | 3 files |
+| Phase 01 P02 | ~20min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Watcher-restart-gap evidence supports RESEARCH Q2 mechanism #1: 2 real transitions measured lost inside one journald-observed restart gap
 - [Phase 01]: Deliberately did not mark HOP-02 complete — only reproduction is done; root-cause and closure are plans 01-05/01-06
 - [Phase 01]: il-jump dbg() uses a human-readable wall-clock timestamp per the plan's explicit override, not PATTERNS.md's epoch-only suggestion
+- [Phase 01]: A1 falsified by measurement: hyprctl cursorpos FROZE once input-leap capture took the pointer, discriminated from a screen-edge-clamp artifact via absence of il-jump's centre_mac() nudge over 2m12s — D-14's local landing oracle stands for plan 01-04
+- [Phase 01]: Scored the 19:29:13 marker, not the chronologically-last one — two later crossings from an orchestrator-requested mouse jiggle (unrelated cursor-visibility diagnosis) were excluded via a new il-cursortrace --before bound
+- [Phase 01]: Deliberately did not mark HOP-03 complete — this plan only establishes the A1 measurement oracle; plan 01-03/01-05 own HOP-03's actual determination
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T17:58:09.240Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-09-10T18:41:58.722Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
