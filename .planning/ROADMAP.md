@@ -61,7 +61,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Both defects are reproducible on demand before any fix is written — a recorded sequence makes the hop fail to fire, and a recorded sequence makes the pointer land off-centre. If either cannot be reproduced, that is the phase's finding and is recorded as such rather than papered over with a speculative fix.
   2. The cause is traced to a named change — either a specific hunk carried in by the `9d1f129` revert (both paths were recorded tested-good on 2026-09-09) or a mechanism ruled out by diff against the last known-good commit. No fix ships on a guess.
   3. The author presses the hop bind at the keyboard, repeatedly and in both directions, and every single press fires — no silent no-op, no swallowed press.
-  4. On every one of those presses the pointer arrives at the centre of the destination screen, never at an edge and never off-centre, in both directions, with the author watching it land.
+  4. The pointer arrives on the correct destination screen and is never pinned against an edge, in both directions, with the author watching it land. Screen-centre accuracy is NOT the bar here: the author confirmed on 2026-09-10 that landing is at screen centre today and that screen centre is the wrong target — Phase 3.1 (HOP-05) owns moving it to the window nearest the crossed edge. If HOP-03 proves not to be a defect, recording that is how this criterion is met.
   5. `il-doctor --test` reports 21/21 and a passing live round trip after the change, and the detached self-check still catches and recentres a deliberately failed hop.
 
 **Plans**: TBD

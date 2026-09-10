@@ -7,10 +7,15 @@
 ## Phase Boundary
 
 Reproduce, root-cause, and close HOP-02 (the hop intermittently does not fire) and
-HOP-03 (the pointer lands somewhere other than dead centre). Reproduction is the
-gate: no fix is written before a recorded sequence makes each defect happen on
+settle HOP-03 (whether the pointer lands where it is supposed to). Reproduction is
+the gate: no fix is written before a recorded sequence makes a defect happen on
 demand. If a defect cannot be reproduced, that is the phase's finding and is
 recorded as such.
+
+**HOP-03 is expected to close as "not a defect"** — see D-03. The user has since
+confirmed the pointer does land at screen centre; their objection is that screen
+centre is the wrong target, which HOP-05 (Phase 3.1) now owns. Confirm that, then
+record it. Do not manufacture a repair.
 
 This phase does not add capability. The one exception granted below is an
 opt-in debug log, because the fastest route to reproduction is making `il-jump`
@@ -29,9 +34,20 @@ say why it refused.
   This rules out the single-shot silent exits (`il-jump:54` stale `flock`,
   `il-jump:168` superseded sequence), because either would clear on the next
   press. It points at persistent wrong *state*.
-- **D-03:** HOP-03's landing position **varies each time** — not a fixed offset.
-  This argues against the constant `mac_width / 4` nudge at `il-jump:140` being
-  the sole cause, and toward the optimistic recentre racing the crossing.
+- **D-03:** ~~HOP-03's landing position varies each time.~~ **Corrected by the
+  user after the discussion closed (2026-09-10):** the pointer *does* land at the
+  centre of the screen right now — that part works as specified. The complaint is
+  that screen centre is the wrong place to land, because with two windows open it
+  is the gap between them. The earlier "varies each time" answer conflated the
+  wrong-target problem with a landing defect.
+
+  **Consequence for this phase:** HOP-03 may not be a defect at all. Phase 1 must
+  test the possibility that current landing behaviour is correct-as-written, in
+  which case the finding is "HOP-03 is not reproducible; the requirement's target
+  was wrong, and HOP-05 (Phase 3.1) supersedes it" — not a fix. The roadmap
+  already licenses this: failing to reproduce is the phase's finding, recorded as
+  such, never papered over with a speculative fix. Do not go hunting a variance
+  that the user has since said they do not see.
 - **D-04:** Whether the two defects co-occur is **unknown** — not yet observed
   either way. Do not assume a shared cause; do not assume independence.
 
@@ -131,10 +147,12 @@ say why it refused.
   undoing it after those land means unwinding all three.
 - **D-18:** HOP-03's acceptance bar for **this phase** is "lands on the correct
   screen and is not pinned against an edge" — not a percentage ring around
-  screen centre. Rationale: HOP-05 (below) replaces screen-centre as the target
-  outright, so tightening a tolerance around a bullseye already agreed to be the
-  wrong one is wasted work. Phase 1 catches the failure; HOP-05 defines the
-  target. Claude's call, offered to the user for override.
+  screen centre. Rationale: HOP-05 (Phase 3.1) replaces screen-centre as the
+  target outright, so tightening a tolerance around a bullseye already agreed to
+  be the wrong one is wasted work. Phase 1 catches the failure; HOP-05 defines
+  the target. **Reinforced by D-03's correction:** the user now reports landing
+  *is* at screen centre today, so this bar is very likely already met and the
+  phase's HOP-03 work is a confirmation, not a repair.
 
 ### New Requirement Raised During Discussion — HOP-05
 
@@ -152,6 +170,32 @@ say why it refused.
   **Action pending:** REQUIREMENTS.md gains HOP-05 and ROADMAP.md gains its
   phase via `/gsd-phase` — this CONTEXT.md is not that record.
 
+### Reproduction Method — Hard Constraint
+
+- **D-21:** **The user will not sit and spam `ALT+C` / `ALT+H` to make HOP-02
+  appear.** Stated directly (2026-09-10): *"i cant just keep spamming alt-c or
+  alt-h"*. Any plan whose reproduction step is "press the chord repeatedly until
+  it fails" is rejected before it is written.
+
+  What is left, and what the plan must use instead:
+  - **A scripted stressor invoking `il-jump` directly** in a loop, with the side
+    file and the debug log (D-11) read after each iteration. This exercises the
+    decision logic — the part suspected in D-05 — without a human at the keyboard.
+    It does *not* exercise the keybind path, which cannot be simulated at all
+    (see Constraints), but the keybind path is not what D-05 accuses.
+  - **Passive instrumentation that catches the failure when it happens
+    organically.** With `ILHOP_DEBUG=1` writing a line per exit path, the next
+    real failure during ordinary use is self-explaining after the fact. This
+    costs waiting rather than pressing.
+  - **State injection** — deliberately write a wrong value into
+    `$XDG_RUNTIME_DIR/il-side` and confirm the hop then refuses silently. If it
+    does, D-05 is demonstrated directly and no organic reproduction is needed to
+    prove the mechanism; only to prove it is what actually happens in the wild.
+
+  The author's presses are reserved for **confirming** behaviour, not for
+  fishing for a failure. Budget them: the verification criteria still require a
+  human at the keyboard, and that is where those presses are spent.
+
 ### Claude's Discretion
 
 The user declined a second discussion round; these stay open, with defaults:
@@ -166,10 +210,9 @@ The user declined a second discussion round; these stay open, with defaults:
   journald, so restarting it mid-hunt destroys the state being investigated.
   Default: read-only observation first; touch it only once the mechanism is
   proven.
-- **Reproduction harness vs. organic waiting.** D-02 means organic reproduction
-  could take a full session. Default: a scripted stressor invoking `il-jump`
-  directly (keybinds cannot be simulated in any case — see Constraints), used to
-  *narrow* the trigger, with the confirming press always made by hand.
+- ~~Reproduction harness vs. organic waiting.~~ **Settled by D-21** — the user
+  ruled out repeated manual pressing. Scripted stressor, passive instrumentation,
+  and state injection are the available routes.
 - **How many good presses close an intermittent defect.** Default: a bar stated
   explicitly in the plan rather than left implicit; three presses prove nothing
   about a defect that appears occasionally.
