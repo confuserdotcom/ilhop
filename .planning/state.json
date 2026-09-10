@@ -19,11 +19,6 @@
       "status": "pending"
     },
     {
-      "number": "3.1",
-      "name": "Window-Centre Landing",
-      "status": "pending"
-    },
-    {
       "number": "4",
       "name": "The ilhop Surface",
       "status": "pending"
@@ -39,5 +34,5 @@
     "label": "Advance to the next step (plan phase 01)",
     "reason": "Phase 01 of 6 — needs a plan"
   },
-  "updated_at": "2026-09-10T13:23:09.000Z"
+  "updated_at": "2026-09-10T17:56:14.649Z"
 }
