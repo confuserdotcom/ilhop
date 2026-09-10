@@ -164,3 +164,7 @@ None beyond the plan's own Task 2 checkpoint (already completed) — no external
 ---
 *Phase: 01-regression-recovery*
 *Completed: 2026-09-10*
+
+## Self-Check: PASSED
+
+All claimed files found on disk (`il-cursortrace`, `01-A1-RESULT.md`, `01-02-SUMMARY.md`); all claimed commits found in their respective repos (`1ae5cf0`, `efc1cfa` in `~/.dotfiles`; `7a4f777`, `e8cc1df` in `ilhop`).
