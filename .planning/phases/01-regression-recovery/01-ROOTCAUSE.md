@@ -163,3 +163,317 @@ choosing 01-06's fix, not offered as an accusation.
 
 ---
 
+## Proven
+
+Executed and observed this session or by the four upstream plans, not
+reasoned from reading code. Each claim below names the assertion that
+produced it.
+
+- **The guard now labelled `already-on-side` (`il-jump:91` in the revert's own
+  numbering, `il-jump:120` in the current, phase-instrumented file) turns a
+  wrong cached `$XDG_RUNTIME_DIR/il-side` value into a silent, motionless
+  `exit 0` on every press, in both directions.** Demonstrated by
+  `il-repro --inject-noop` (`01-EVIDENCE.md` "What the tracer proved"): forcing
+  the side file to the guard's computed `$want` produced exit 0, zero pointer
+  motion (`hyprctl cursorpos` unchanged, `dx=0 dy=0`/`dx=0 dy=1`px), and,
+  once instrumented, exactly one self-explaining log line naming the refusal —
+  in both `left` and `right` directions. RED was observed first against the
+  unmodified guard (4 assertions failed specifically on "a refusal line
+  appeared," not on exit code or pointer stillness, which already passed) —
+  isolating precisely what changed: the guard already produced D-02's
+  *symptom* before instrumentation; instrumentation made it *explain itself*.
+  This matches D-02's persistence (repeated presses, not a one-shot
+  transient — every repeated injected invocation refused identically) and
+  D-01's direction symmetry (`left` under a forced-`mac` value, `right` under
+  a forced-`nastralis` value, both refuse the same way).
+- **A stale value survives an `il-side-watch.service` restart untouched, and
+  the surviving stale value then produces the identical silent no-op.**
+  Demonstrated end-to-end, not argued from the code, by
+  `il-repro --watcher-gap` (`01-03-SUMMARY.md` coverage D3, 5/5 checks; also
+  re-run this session as part of `il-repro --all`, still green — see
+  "Live re-verification" below). The mode injects a wrong value, restarts the
+  real `il-side-watch.service`, and asserts both that the wrong value survived
+  unmodified and that it then produced the guard's silent no-op. Measured
+  restart gap in this synthetic test: 15–18ms across three runs (this
+  session's rerun: 16ms) — explicitly and correctly caveated by the tool's own
+  output as a manual `systemctl restart` (skips `RestartSec`'s automatic-crash
+  delay), not representative of the real `Restart=always` cycle's timing.
+- **The decision table's two refusal combinations hold under load.**
+  `il-repro --stress` looped both combinations 20× each with zero pointer
+  motion, 41/41 green (`01-03-SUMMARY.md` coverage D2).
+- **`hyprctl cursorpos`, read locally on Nastralis, freezes once input-leap's
+  server-side capture takes the pointer, and the freeze is genuine capture,
+  not a screen-edge-clamp artifact.** `01-A1-RESULT.md`: verdict FROZE at the
+  `19:29:13` marker, independently discriminated from a clamp by the absence
+  of `il-jump`'s own post-crossing `centre_mac()` rightward nudge — which an
+  edge clamp alone would not block — across 3,481 consecutive local samples
+  over the following ~2m12s. This is D-14's oracle, now the non-circular
+  landing check `il-doctor --test` runs (`01-04-SUMMARY.md`), and it underwrote
+  HOP-03's own settlement.
+- **HOP-03 clears D-18's bar on both legs, from live geometry, not a
+  hardcoded fallback.** `01-HOP-03-FINDING.md`'s four measurements: the `jq`
+  read in `centre_nastralis()` genuinely computes `1280 720` from real monitor
+  JSON (independently reproduced by manual arithmetic against the same raw
+  JSON, not just pattern-matched); the target clears the 100px-edge bar by
+  more than 7× on every axis; `centre_mac()`'s nudge (427px, 854px at the
+  measured ~2× post-acceleration value) stays inside the Mac's cached 1710px
+  width with margin to spare; and `il-cursortrace --landed nastralis` agreed
+  with the cache at measurement time. **Finding: NOT A DEFECT** — no HOP-03
+  live-system claim from this document overturns that determination.
+
+### Live re-verification this session
+
+Re-run now, not assumed from the upstream plans' own reports, per D-09's
+"confirm at execution time" standard applied to the phase's own prior claims
+as well as to the diff window:
+
+```
+$ /home/nastralis/.local/bin/il-doctor
+21 check(s) ok, 0 failed
+
+$ /home/nastralis/.local/bin/il-repro --all
+54 check(s) ok, 0 failed
+  ok    il-jump right exited 0 against the surviving wrong value
+  ok    the surviving wrong value produced a silent no-op, logged as already-on-side
+  ok    il-side-watch.service still active at exit
+```
+
+Both green, unchanged from the upstream plans' own baselines. Nothing in this
+plan altered live state: `$XDG_RUNTIME_DIR/il-side` reads `mac`, its real
+current value, not forced by anything this plan did.
+
+## Evidenced but not proven
+
+The occurrence half — that a wrong value has actually happened, or does
+happen often enough to explain the user's reports — separated from the
+mechanism half above, per this plan's purpose.
+
+- **The watcher-restart-gap mechanism (RESEARCH Q2 #1) has fired at least
+  once, with real consequence, but the sample size is one.**
+  `01-EVIDENCE.md` measurement 1: one confirmed same-boot
+  `Restart=always`/`RestartSec=3` cycle in the 7-day journald window
+  (`00:53:34`→`00:53:38`, gap ~4s), inside which **2 real transitions
+  provably landed and were never observed** by `il-side-watch` (measurement
+  3). In this one instance the pair happened to net back to the same value
+  the cache already held, so `il-side` was not *visibly* corrupted that time
+  — coincidence, not correctness; an odd-count or differently-ordered pair
+  would have left it stale in exactly D-02's shape, and no code path here
+  could have told the difference at the time.
+
+  **Expected rate, computed from the measured counts (not an impression):**
+  mean transition interval 166.5s (measurement 2); restart gap ~4s
+  (measurement 1). A naive uniform-spacing estimate gives
+  `4s / 166.5s ≈ 0.024` expected lost transitions per restart. The one
+  restart observed lost **2** — about 83× the naive estimate — because real
+  transitions cluster in bursts (`01-EVIDENCE.md`'s own side note: "usage is
+  bursty... not evenly spaced") rather than arriving evenly; both lost
+  transitions in this instance were one second apart (`00:53:35`,
+  `00:53:36`), consistent with a rapid double-hop rather than isolated
+  ordinary presses. Combined with the observed restart frequency (1 restart
+  in 46.8h of actual logged uptime ≈ 0.0214/hour), this brackets a wide range:
+  - **Lower bound** (naive uniform spacing): `0.0214 × 0.024 ≈ 0.0005`
+    lost transitions/hour ≈ roughly **one lost transition per ~81 days**.
+  - **Upper bound** (extrapolating from the one observed restart's actual
+    loss): `0.0214 × 2 ≈ 0.043` lost transitions/hour ≈ roughly **one lost
+    transition per ~23 hours**.
+
+  Neither bound is trustworthy on its own: the lower bound assumes spacing
+  the data itself says is wrong (bursty, not uniform); the upper bound
+  extrapolates a long-run rate from a single sample that occurred at
+  `00:53`–`00:57` on 2026-09-10 — minutes *before* `92f64bc`'s own commit
+  timestamp (`00:57:29`), meaning this one observed restart most plausibly
+  happened during the author's own build-and-test activity for `92f64bc`
+  itself, not during later, ordinary daily-driver use. Whether that makes it
+  more or less representative of the failure rate the user has actually
+  experienced since is not determined by this document. **Is this
+  consistent with the user's report?** D-02/PROJECT.md describe HOP-02 as
+  intermittent ("sometimes doesn't fire"), not constant. A rate anywhere in
+  the ~1/day to ~1/81-days range is not inconsistent with "sometimes," but
+  the bracket is wide enough that this measurement supports the mechanism's
+  *plausibility*, not its *frequency*, with any confidence.
+
+- **A second, independent gap exists and is more certain in one respect: it
+  is deterministic when triggered, not restart-dependent.** RESEARCH Q1/Q2
+  mechanism #2 — `il-side-watch:24`'s case statement matches only
+  `switchScreen()`'s `switch from "X" to "Y"` line shape and **never**
+  matches `forceLeaveClient()`'s differently-worded `jump from "X" to "Y"`
+  line, confirmed by direct code read (`il-side-watch:24`, unmodified this
+  entire phase — see "The diff window" confirmations). `01-EVIDENCE.md`
+  measurement 2 counted **7** `jump from` occurrences in the same 7-day
+  window against 1005 `switch from` occurrences (0.69% of all 1012
+  transitions) — **a correction to RESEARCH's own ranking rationale**, which
+  ranked this mechanism second specifically because its trigger was
+  "so-far unobserved." It has now been observed, seven times, in the same
+  measurement pass that found mechanism #1's single restart-gap instance.
+  Every one of those seven is a transition `il-side-watch` structurally
+  cannot see, with no restart or race window required — 100% of `jump from`
+  events are missed by construction, not by chance.
+
+  **What is not established about this second gap:** whether
+  `forceLeaveClient()` ever fires as a consequence of the author's own
+  `ALT+C`/`ALT+H` presses at all, versus firing only for some other
+  administrative event (a forced client disconnect, for instance) unrelated
+  to ordinary hop usage. RESEARCH Q1 itself could not locate
+  `forceLeaveClient()`'s call site precisely enough to settle this, and this
+  document does not settle it either — it is recorded here as a real,
+  measured, and under-examined second staleness vector, not folded into
+  mechanism #1's rate above because its relevance to D-02's reported
+  workflow is unconfirmed. It is also possible a `jump from` event
+  co-occurs with a companion `has disconnected`/`has connected` NOTE line for
+  the same underlying event, which **would** be caught by
+  `il-side-watch:34-35`'s separate branch and could self-correct the state
+  regardless of the missed `jump from` line — this was not checked in this
+  document and is a discriminating test for whoever picks up this thread.
+
+- **Since Route 2 was armed (`01-03`, ~20:03 on 2026-09-10) through this
+  plan's own execution (~00:13 on 2026-09-11 — roughly 3h50m–4h of real,
+  organic, unattended daily-driver use), no occurrence of any of the
+  suspect-adjacent failure shapes has been caught.** Read directly from the
+  live log via `il-repro --report`, not summarized from memory:
+
+  ```
+  Tally by exit path:
+    already-on-side  4
+    stale-lock       0
+    superseded       0
+    watcher-unknown  0
+    usage            0
+    die              0
+    dispatch         47
+  ```
+
+  51 total lines: 47 real dispatches (real hops fired, confirmed by the
+  `seq=` field's presence), 4 `already-on-side` no-ops. **Every one of the 4
+  no-ops is isolated** — the full log (reproduced below, not just the tail)
+  shows no two `already-on-side` lines for the same direction occurring back
+  to back without an intervening successful `dispatch` in between, which is
+  the specific shape D-02 describes ("stays dead for a while, repeated
+  presses do nothing"). This is consistent with each of the 4 being an
+  *ordinary, correct* no-op (the author pressing while genuinely already on
+  the target side) rather than a cache-staleness bug — but this document
+  cannot rule the alternative out from the log alone, because the log does
+  not record whether the human expected a hop at that exact press; it only
+  records that the guard's own comparison agreed with itself. Full log:
+
+  ```
+  2026-09-10T20:13:28.320+0100 already-on-side: dir=right CUR=nastralis want=nastralis
+  2026-09-10T20:29:08.266+0100 already-on-side: dir=right CUR=nastralis want=nastralis
+  2026-09-10T21:09:51.892+0100 dispatch: dir=right ...
+  [... 18 more dispatch lines between 21:09 and 21:23 ...]
+  2026-09-10T23:35:51.757+0100 dispatch: dir=right ...
+  2026-09-10T23:35:53.196+0100 already-on-side: dir=right CUR=nastralis want=nastralis
+  2026-09-10T23:35:58.310+0100 dispatch: dir=left ...
+  [... 22 more dispatch lines between 23:38 and 00:02 ...]
+  2026-09-10T23:47:07.383+0100 already-on-side: dir=right CUR=nastralis want=nastralis
+  2026-09-11T00:02:15.436+0100 dispatch: dir=left want=mac CUR=nastralis seq=546659-1789081335434812211
+  ```
+
+  This is a genuine organic null result for the observation window it covers
+  — not "the bug doesn't exist," but "it did not fire, or did not fire
+  visibly, during these ~4 hours of real use." Given the rate bracket above
+  (anywhere from ~1/day to ~1/81-days for mechanism #1 alone, plus an
+  unknown contribution from mechanism #2), a 4-hour window not catching an
+  occurrence is not informative on its own either way — it is consistent
+  with both bounds of the bracket. The log stays live past this plan;
+  whoever executes 01-06 inherits it with more hours on the clock.
+
+## Not established
+
+Outside what any of the three sanctioned reproduction routes, or the
+occurrence evidence above, can reach at all.
+
+- **Whether the Hyprland keybind (`ALT+C`/`ALT+H`) ever fails to invoke
+  `il-jump` in the first place.** That dispatch lives entirely in Hyprland's
+  own keybind layer, outside every script this phase can touch, and — per
+  PROJECT.md's Testability constraint, measured directly, not assumed —
+  `ydotool` key events do not fire Hyprland keybinds at all (0 fires). No
+  route available to this phase, including the live Route 2 log above, can
+  observe this layer: Route 1 calls `il-jump` directly and so never exercises
+  dispatch; Route 3 starts even further downstream, inside a specific guard.
+  Route 2's dispatch tally (47 in ~4 hours) confirms presses **are** reaching
+  `il-jump` at a rate consistent with ordinary use, but says nothing about
+  whether some other press, remembered as failed, never reached it at all —
+  that would show up as **no new line whatsoever** near the remembered press
+  time, which this document did not have a specific remembered failure
+  timestamp to check against this session.
+- **Whether HOP-02 and HOP-03 co-occur.** D-04 recorded this as unknown
+  either way. It remains unknown either way. `01-HOP-03-FINDING.md` settled
+  HOP-03 as NOT A DEFECT, so there is currently no live HOP-03 occurrence to
+  correlate a HOP-02 occurrence against — the question is not answered, it is
+  now moot in practice until/unless HOP-05's work (Phase 3.1) surfaces a new
+  landing-side defect to compare against.
+- **Whether the `forceLeaveClient()`/`jump from` gap (mechanism #2, above)
+  ever actually fires as a consequence of the author's own hop presses**, as
+  opposed to some unrelated administrative disconnect event. Recorded under
+  "Evidenced but not proven" above as the specific open sub-question it is,
+  not restated here as a separate item — flagged again because it is the
+  single most concrete follow-up this document identifies for whoever
+  extends Route 2 or reads `input-leap`'s own `forceLeaveClient()` call
+  sites next.
+
+## What the fix must accomplish
+
+Properties, not an implementation — 01-06's decision checkpoint chooses among
+implementations against these, per D-17: if the cause is `92f64bc`'s
+toggle/side-file **design**, Phase 1 pays whatever that costs; this document
+does not pre-select which of the following shapes that payment takes.
+
+1. **The guard must stop treating a cache it cannot currently verify as
+   ground truth for a silent, unrecoverable no-op.** Either the value is
+   checked against something less prone to the backlog-loss and
+   line-shape-mismatch gaps named above before a press is allowed to refuse
+   silently, or a refused press is made recoverable — e.g. a second press
+   shortly after the first forces the hop through rather than repeating an
+   identical silent no-op indefinitely, the way Route 3 demonstrated it does
+   today.
+2. **Whatever writes the cache must not have an unbounded blind spot across
+   its own restarts.** The `journalctl -f -n 0` zero-backlog reattach
+   (mechanism #1) is a specific, named gap; closing it (bounded backlog on
+   reattach, or re-deriving current state some other way at startup) or
+   making the consumer resilient to the writer having one are both valid
+   directions — this document does not choose between them.
+3. **The `jump from` line shape must stop being a silent gap.** Either
+   `il-side-watch` (or its replacement) matches it too, or its actual
+   relationship to the hop workflow is investigated and the gap is
+   consciously ruled in or out — it must not remain an unexamined second
+   mechanism alongside whatever else ships.
+4. **The fix must not regress the property `92f64bc` was built to earn over
+   `849b6ac`.** One chord that hops both ways and stays correct after a
+   manual mouse-cross is the entire reason the toggle/side-file model exists;
+   reverting to fixed-direction binds would resurrect the original bug
+   `92f64bc` was answering, which D-17 does not license.
+5. **The fix must stay inside PROJECT.md's ~50ms latency budget.** No
+   awaited journald confirmation in the hot decision path — the specific
+   regression this project has already banned once, at real cost (~450ms,
+   rejected as laggy).
+6. **Any change that touches key or pointer injection gates on a human at
+   the keyboard**, per PROJECT.md's Verification constraint — the same rule
+   every other input-path change in this project already follows, restated
+   here because 01-06 is the plan that will actually ship code against it.
+7. **The fix must not reintroduce `il-doctor`'s circularity (D-16) or
+   disturb the single-flight lock's correctness** (RESEARCH Pitfall 4) —
+   both are load-bearing for every plan downstream of this phase.
+
+**Named mechanism:** `92f64bc`'s new `il-side-watch` process can silently
+lose real screen-transition events — via a zero-backlog restart reattach
+(RESEARCH Q2 #1, confirmed firing at least once with 2 real transitions lost)
+and via a case statement that never matches `forceLeaveClient()`'s `jump
+from` line shape at all (RESEARCH Q2 #2, confirmed firing 7 times in the same
+7-day window) — and the same commit's `il-jump` guard (`already-on-side`)
+then trusts whatever value results without verification; this causal chain
+is proven end-to-end, by direct injection and by a live watcher-restart
+test, to produce exactly D-02's silent, persistent, direction-symmetric
+refusal. What is **not** established is that this chain has been caught
+actually firing during a press the author remembers failing: the one
+observed restart-gap loss most plausibly coincided with `92f64bc`'s own
+build-and-test session rather than later ordinary use, and ~4 hours of live
+organic logging since Route 2 was armed shows 47 real hops, 4 isolated
+ordinary-looking no-ops, and none of the buggy exit paths firing at all. The
+mechanism is real and sufficient to explain the reported symptom exactly;
+whether it is *the* explanation for how often it happens in the wild remains
+open, and is not a gap a guess should paper over before 01-06 chooses a fix.
+
+---
+*Phase: 01-regression-recovery*
+*Plan: 05*
+*Written: 2026-09-11*
