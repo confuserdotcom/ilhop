@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-09-10T19:06:54.977Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-09-10T23:06:22.312Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 01 execution started
-state_head: 48f924f453132399e1e8cb5d3e47476e2dc39fd3
+state_head: 61cf10f695f7a125b44356f89056af9c2fd31d6f
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 01 (Regression Recovery) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 01 execution started
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 15min | 3 tasks | 3 files |
 | Phase 01 P02 | ~20min | 3 tasks | 2 files |
 | Phase 01 P03 | 35min | 2 tasks | 2 files |
+| Phase 01 P04 | 50min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Deliberately did not mark HOP-03 complete — this plan only establishes the A1 measurement oracle; plan 01-03/01-05 own HOP-03's actual determination
 - [Phase 01]: Did not run requirements mark-complete HOP-02 -- reproduction (all 3 D-21 routes) and RESEARCH Q2 #1's consequence half are now proven, but root-cause and closure remain plans 01-05/01-06
 - [Phase 01]: Route 2 (ILHOP_DEBUG passive logging) left armed for the remainder of the phase so an organic HOP-02 occurrence self-explains via il-repro --report
+- [Phase 01]: HOP-03 settled: NOT A DEFECT per D-18's bar, measured not asserted; HOP-05 (Phase 3.1) supersedes the landing target — il-doctor:110/:112's circularity fixed (D-16): il-cursortrace --landed is a local-freeze-probe oracle built on 01-A1-RESULT.md's FROZE verdict, never reads il-side, proven non-circular via --selftest-oracle
+- [Phase 01]: Did not run requirements mark-complete for HOP-02 or HOP-03 in plan 01-04 — HOP-02 still needs root-cause and closure (01-05/01-06); HOP-03's human-check is deferred to end-of-phase harvest per workflow.human_verify_mode
 
 ### Pending Todos
 
@@ -107,6 +110,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T19:06:54.936Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-09-10T23:06:22.264Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
