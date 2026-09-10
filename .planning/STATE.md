@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
 status: planning
-stopped_at: Phase 1 planned — 6 plans, 4 waves
-last_updated: "2026-09-10T17:39:03.353Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-09-10T17:58:09.278Z"
 last_activity: 2026-09-10
 last_activity_desc: Roadmap created, 12/12 v1 requirements mapped across 5 phases
-state_head: ac6ee4b7e651d34166e0e8b5838ab7a6357adb8d
+state_head: a2f2c523f54687d9bb49bd19acfb1491fc5ddb97
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 1 of 6 (Regression Recovery)
-Plan: 0 of 6 in current phase
+Plan: 1 of 6 in current phase
 Status: Planned — ready to execute
 Last activity: 2026-09-10 — Roadmap created, 12/12 v1 requirements mapped across 5 phases
 
@@ -54,6 +54,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P01 | 15min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -66,6 +71,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Drive the hop from the server side only — input-leap ignores synthetic pointer input on clients.
 - Optimistic recentre + detached self-check, never an awaited journald confirmation in the hot path (~450ms, rejected as laggy).
 - v1 = Hyprland + AeroSpace only; adapters deferred to v2.
+- [Phase 01]: Watcher-restart-gap evidence supports RESEARCH Q2 mechanism #1: 2 real transitions measured lost inside one journald-observed restart gap
+- [Phase 01]: Deliberately did not mark HOP-02 complete — only reproduction is done; root-cause and closure are plans 01-05/01-06
+- [Phase 01]: il-jump dbg() uses a human-readable wall-clock timestamp per the plan's explicit override, not PATTERNS.md's epoch-only suggestion
 
 ### Pending Todos
 
@@ -92,6 +100,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T17:39:03.319Z
-Stopped at: Phase 1 planned — 6 plans, 4 waves
-Resume file: .planning/phases/01-regression-recovery/01-01-PLAN.md
+Last session: 2026-09-10T17:58:09.240Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
