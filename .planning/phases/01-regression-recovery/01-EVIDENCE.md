@@ -279,4 +279,79 @@ remains open and is exactly what plan 01-03's watcher-gap assertion and the
 continuing Route 2 passive log are for. This evidence supports rather than
 deflates the leading hypothesis — it does not close it.
 
-<!-- gsd:write-continue -->
+## What the tracer proved
+
+Executed, not inferred — every claim below was observed running, not reasoned
+from reading the code:
+
+- With `il-jump`'s current code (`849b6ac..9d1f129`, unchanged since
+  `92f64bc`), forcing `$XDG_RUNTIME_DIR/il-side` to the value `il-jump`'s
+  guard at `:91` computes as `$want` for a given direction produces a
+  silent, motionless `exit 0` on every press, in both directions (`left`
+  with the file forced to `mac`; `right` with the file forced to
+  `nastralis`). This was demonstrated by `il-repro --inject-noop`, with no
+  keypress and no pointer motion — `hyprctl cursorpos` sampled immediately
+  before and after each invocation differed by `dx=0 dy=0` in both cases.
+- Before this task's instrumentation existed, the same injection produced
+  the identical silent exit 0 with zero explanation anywhere — confirmed by
+  running `il-repro --inject-noop` against the unmodified `il-jump` and
+  observing it FAIL (`4 checks failed`, `exit 1`) specifically on the "a
+  refusal line appeared in the log" assertions, while the exit-code and
+  pointer-stillness assertions already passed. This isolates precisely what
+  changed: the guard already produced D-02's *symptom* before this task; the
+  task made the guard *explain itself*.
+- The guard now writes exactly one line per refusal, carrying a
+  human-readable wall-clock timestamp with milliseconds, the direction, and
+  both compared values (`CUR` and `want`) — verified by byte-offset
+  inspection of `$XDG_RUNTIME_DIR/ilhop-debug.log` before and after each
+  invocation, not by eyeballing the tail of the file.
+- With `ILHOP_DEBUG` unset and no arm file present, the same two injected
+  invocations leave the log's byte count unchanged (verified: `72` bytes
+  before and after the first case's debug-off run, `157` before and after
+  the second) — confirming the logging is genuinely off by default, not
+  merely quiet.
+- The repeated no-op is exactly D-02's reported shape: it persists across
+  presses (every one of `il-repro`'s repeated injected invocations produced
+  the identical refusal, not a one-shot transient), it is direction-symmetric
+  (`left` and `right` both refuse under the matching injected value, matching
+  D-01), and nothing about the invocation itself clears it — only a change to
+  the side file would. This demonstrates, rather than merely restates, the
+  mechanism D-05 accused.
+
+## What it did not prove
+
+Evidenced but not proven — task 1's restart-and-overlap counts speak to this,
+and plan 01-03's watcher-gap assertion sharpens it further:
+
+- **Whether this wrong value actually occurs during ordinary use.** Task 1
+  measured one confirmed instance of the watcher-restart-gap mechanism firing
+  (2 real transitions lost inside a ~4-second blackout), but in that instance
+  the lost pair happened to net back to the correct value, so it did not
+  visibly corrupt `il-side` that time. Route 3 proves the guard behaves
+  exactly as suspected *when* the file is wrong; it says nothing about how
+  often, in practice, the file actually ends up wrong on this machine. That
+  is an open frequency question, not a mechanism question, and this document
+  does not close it.
+
+Not established at all — outside what any of the three sanctioned routes can
+reach:
+
+- **Whether the Hyprland keybind (ALT+C / ALT+H) ever fails to invoke
+  `il-jump` in the first place.** That dispatch lives in Hyprland's own
+  keybind layer, entirely outside this script, and — per PROJECT.md's
+  Testability constraint and this session's own measurement — `ydotool` key
+  events do not fire Hyprland keybinds at all (0 fires), so no route
+  available to this phase can simulate a press and observe whether the
+  dispatch itself succeeds. Route 1 (a scripted stressor) calls `il-jump`
+  directly and so cannot see a keybind-dispatch failure either; Route 3
+  (this task) starts even further downstream, at a specific already-inside-
+  the-script guard. This is precisely why route 2's passive `ILHOP_DEBUG=1`
+  logging is armed for the rest of the phase in plan 01-03: with the log
+  instrumented and running continuously, the *absence* of any new log line
+  beside a real, remembered failed press is itself a finding — it would mean
+  the failure happened upstream of `il-jump`, in territory none of the three
+  routes can directly observe.
+
+No fix, cause, or recommendation is recorded in this document. Plan 01-05
+owns the determination and consumes this file as input.
+
