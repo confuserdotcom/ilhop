@@ -114,8 +114,35 @@ say why it refused.
 
 ### Measurement and Ground Truth
 
-- **D-14:** The oracle is **`hyprctl cursorpos` locally, plus input-leap's own
-  journal enter/leave lines for the far side**. No new Mac-side helper.
+- **D-14:** *(amended 2026-09-10 after research — read the amendment below before
+  acting on the original wording.)* The oracle is **`hyprctl cursorpos` locally,
+  plus input-leap's own journal enter/leave lines for the far side**. No new
+  Mac-side helper.
+
+  **Amendment — two claims in this decision did not survive research
+  (`01-RESEARCH.md` Q1, Q6):**
+
+  1. **The journal cannot answer "where is the pointer now."** It is
+     transition-only — verified against input-leap's own `Server.cpp`. There is
+     no periodic status line, no startup line naming the active screen, and
+     `switchScreen()` fires only on an actual transition. So the journal is not
+     a middleman that `il-side` wraps and we can cut out: `il-side` *is* the
+     only summarising view of a transition-only stream that exists. Reading the
+     journal directly removes `il-side-watch` as a point of failure but inherits
+     the identical structural gap — "did I observe every transition since
+     boot?" remains open either way. Any harness built on it must reconstruct
+     state by replaying transitions from a known start.
+  2. **`hyprctl cursorpos` as a decisive local oracle is `[ASSUMED]`, not
+     established.** The reasoning is sound — once input-leap's capture takes
+     over, later synthetic deltas should stop reaching Hyprland's local pointer
+     pipeline, so `cursorpos` should freeze rather than track `centre_mac()`'s
+     nudge — but no primary source confirms when interception begins relative to
+     `switchScreen()`. **This must be falsified before anything is built on it:**
+     one human-driven known-good hop, `cursorpos` diffed immediately before and
+     immediately after `centre_mac()`. If it is not frozen at the pre-crossing
+     edge value, D-14's oracle is wrong and the fallback likely reintroduces the
+     ~450ms journal wait that D-15 exists to forbid — a design cost, not a
+     footnote. This check is the phase's first task.
   Rationale: a `CGEvent` location reader over ssh costs 40–110ms warm and ~1.6s
   on a lapsed control master — the exact leg Phase 2 exists to repair — and adds
   compiled code to the Mac against the POSIX-shell-only constraint. `cursorpos`
