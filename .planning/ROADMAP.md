@@ -64,13 +64,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The pointer arrives on the correct destination screen and is never pinned against an edge, in both directions, with the author watching it land. Screen-centre accuracy is NOT the bar here: the author confirmed on 2026-09-10 that landing is at screen centre today and that screen centre is the wrong target — Phase 3.1 (HOP-05) owns moving it to the window nearest the crossed edge. If HOP-03 proves not to be a defect, recording that is how this criterion is met.
   5. `il-doctor --test` reports 21/21 and a passing live round trip after the change, and the detached self-check still catches and recentres a deliberately failed hop.
 
-**Plans**: 2/6 plans executed in 4 waves
+**Plans**: 3/6 plans executed in 4 waves
 
 Plans:
 
 - [x] 01-01-PLAN.md — Zero-keypress evidence sweep, then the tracer: the accused refusal at `il-jump:91` wired end to end from guard to `ILHOP_DEBUG` log to harness assertion
 - [x] 01-02-PLAN.md — Falsify assumption A1 (does `hyprctl cursorpos` freeze under capture?) on one human-driven hop, before any oracle is built on it
-- [ ] 01-03-PLAN.md — Every exit path names itself; route 1's stressor, the watcher-gap assertion, and route 2 armed
+- [x] 01-03-PLAN.md — Every exit path names itself; route 1's stressor, the watcher-gap assertion, and route 2 armed
 - [ ] 01-04-PLAN.md — Replace the circular landing check at `il-doctor:110`, and settle HOP-03 as a finding rather than a repair
 - [ ] 01-05-PLAN.md — Re-verify the corrected diff window `849b6ac..9d1f129`, then the root-cause determination with proven and inferred kept apart
 - [ ] 01-06-PLAN.md — Choose the fix shape at a blocking decision gate, ship it whole, and run the phase gate including the human criteria
@@ -203,7 +203,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Regression Recovery | 2/6 | In Progress|  |
+| 1. Regression Recovery | 3/6 | In Progress|  |
 | 2. Clean Handoff | 0/TBD | Not started | - |
 | 3. Focus Chain Precision | 0/TBD | Not started | - |
 | 4. The ilhop Surface | 0/TBD | Not started | - |
