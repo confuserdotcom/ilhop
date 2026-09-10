@@ -64,27 +64,38 @@ Explicitly excluded. Reasoning recorded so it is not re-added.
 
 ## Traceability
 
-Populated during roadmap creation.
+Populated during roadmap creation. Every v1 requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOP-01 | TBD | Pending |
-| HOP-02 | TBD | Pending |
-| HOP-03 | TBD | Pending |
-| HOP-04 | TBD | Pending |
-| FOCUS-01 | TBD | Pending |
-| FOCUS-02 | TBD | Pending |
-| DIAG-01 | TBD | Pending |
-| DIAG-02 | TBD | Pending |
-| PKG-01 | TBD | Pending |
-| PKG-02 | TBD | Pending |
-| PKG-03 | TBD | Pending |
-| PKG-04 | TBD | Pending |
+| HOP-01 | Phase 2 | Pending |
+| HOP-02 | Phase 1 | Pending |
+| HOP-03 | Phase 1 | Pending |
+| HOP-04 | Phase 2 | Pending |
+| FOCUS-01 | Phase 3 | Pending |
+| FOCUS-02 | Phase 3 | Pending |
+| DIAG-01 | Phase 4 | Pending |
+| DIAG-02 | Phase 4 | Pending |
+| PKG-01 | Phase 5 | Pending |
+| PKG-02 | Phase 5 | Pending |
+| PKG-03 | Phase 5 | Pending |
+| PKG-04 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 12 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12 ✓
+- Unmapped: 0 ✓
+- Duplicates (a requirement in two phases): 0 ✓
+
+**By phase:**
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| Phase 1 — Regression Recovery | HOP-02, HOP-03 | 2 |
+| Phase 2 — Clean Handoff | HOP-01, HOP-04 | 2 |
+| Phase 3 — Focus Chain Precision | FOCUS-01, FOCUS-02 | 2 |
+| Phase 4 — The ilhop Surface | DIAG-01, DIAG-02, PKG-04 | 3 |
+| Phase 5 — Standalone Install | PKG-01, PKG-02, PKG-03 | 3 |
 
 ## Verification Constraint
 
@@ -96,4 +107,4 @@ cannot be simulated at all. A modifier-flag read alone is not proof.
 
 ---
 *Requirements defined: 2026-09-10*
-*Last updated: 2026-09-10 after initial definition*
+*Last updated: 2026-09-10 after roadmap creation (traceability populated)*
