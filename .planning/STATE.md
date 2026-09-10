@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
 status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-09-10T23:06:22.312Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-09-10T23:18:31.932Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 01 execution started
-state_head: 61cf10f695f7a125b44356f89056af9c2fd31d6f
+state_head: c5cfeb92e62276041e4b80ed4c9c14dedff5a126
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 01 (Regression Recovery) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 01 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P02 | ~20min | 3 tasks | 2 files |
 | Phase 01 P03 | 35min | 2 tasks | 2 files |
 | Phase 01 P04 | 50min | 3 tasks | 3 files |
+| Phase 01 P05 | ~55min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Route 2 (ILHOP_DEBUG passive logging) left armed for the remainder of the phase so an organic HOP-02 occurrence self-explains via il-repro --report
 - [Phase 01]: HOP-03 settled: NOT A DEFECT per D-18's bar, measured not asserted; HOP-05 (Phase 3.1) supersedes the landing target — il-doctor:110/:112's circularity fixed (D-16): il-cursortrace --landed is a local-freeze-probe oracle built on 01-A1-RESULT.md's FROZE verdict, never reads il-side, proven non-circular via --selftest-oracle
 - [Phase 01]: Did not run requirements mark-complete for HOP-02 or HOP-03 in plan 01-04 — HOP-02 still needs root-cause and closure (01-05/01-06); HOP-03's human-check is deferred to end-of-phase harvest per workflow.human_verify_mode
+- [Phase 01]: [Phase 01]: HOP-02's Named mechanism populated (not NOT TRACED): il-side-watch's restart-reattach gap and jump-from line-shape mismatch feed il-jump's blindly-trusting guard, proven end to end by injection and a live watcher-restart test; whether this chain has been caught firing during a remembered failed press remains unconfirmed
+- [Phase 01]: [Phase 01]: Corrected two unverified claims found while re-deriving the diff window and determination: 92f64bc landed 5h52m37s after 849b6ac, not 'about an hour later'; RESEARCH's mechanism #2 ranking rationale ('trigger so-far unobserved') is outdated -- 01-EVIDENCE.md already measured it firing 7 times
+- [Phase 01]: [Phase 01]: Did not run requirements mark-complete for HOP-02 or HOP-03 in plan 01-05 -- root-cause determination is written but closure (choosing and shipping a fix, running the human-at-keyboard gate) is explicitly plan 01-06's work
 
 ### Pending Todos
 
@@ -110,6 +114,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T23:06:22.264Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-09-10T23:18:31.885Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
