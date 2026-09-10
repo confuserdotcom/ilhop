@@ -53,7 +53,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 1: Regression Recovery
 
-**Goal**: The hop fires on every press and puts the pointer dead centre — the two user-reported defects are reproduced, root-caused, and closed.
+**Goal**: The hop fires on every press, and the landing question is settled — the two user-reported defects are reproduced and root-caused, or shown not to be defects, and closed either way.
 **Depends on**: Nothing (first phase)
 **Requirements**: HOP-02, HOP-03
 **Success Criteria** (what must be TRUE):
