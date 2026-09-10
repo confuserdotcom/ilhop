@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-09-10T18:41:58.771Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-09-10T19:06:54.977Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 01 execution started
-state_head: 683575e3f62dbfb81d4948e804db98865a51ae8d
+state_head: 48f924f453132399e1e8cb5d3e47476e2dc39fd3
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 01 (Regression Recovery) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 01 execution started
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 01 P01 | 15min | 3 tasks | 3 files |
 | Phase 01 P02 | ~20min | 3 tasks | 2 files |
+| Phase 01 P03 | 35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: A1 falsified by measurement: hyprctl cursorpos FROZE once input-leap capture took the pointer, discriminated from a screen-edge-clamp artifact via absence of il-jump's centre_mac() nudge over 2m12s — D-14's local landing oracle stands for plan 01-04
 - [Phase 01]: Scored the 19:29:13 marker, not the chronologically-last one — two later crossings from an orchestrator-requested mouse jiggle (unrelated cursor-visibility diagnosis) were excluded via a new il-cursortrace --before bound
 - [Phase 01]: Deliberately did not mark HOP-03 complete — this plan only establishes the A1 measurement oracle; plan 01-03/01-05 own HOP-03's actual determination
+- [Phase 01]: Did not run requirements mark-complete HOP-02 -- reproduction (all 3 D-21 routes) and RESEARCH Q2 #1's consequence half are now proven, but root-cause and closure remain plans 01-05/01-06
+- [Phase 01]: Route 2 (ILHOP_DEBUG passive logging) left armed for the remainder of the phase so an organic HOP-02 occurrence self-explains via il-repro --report
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T18:41:58.722Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-09-10T19:06:54.936Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
