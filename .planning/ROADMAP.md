@@ -42,7 +42,7 @@ keyboard can satisfy.
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
+- [x] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
 - [ ] **Phase 2: Clean Handoff** - The first chord after a hop lands, and the return leg is as fast as the outbound
 - [ ] **Phase 3: Focus Chain Precision** - `ALT+H` is indistinguishable from the compositor's own focus-left until there is nowhere left to go
 - [ ] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
@@ -62,9 +62,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The cause is traced to a named change — either a specific hunk carried in by the `9d1f129` revert (both paths were recorded tested-good on 2026-09-09) or a mechanism ruled out by diff against the last known-good commit. No fix ships on a guess.
   3. The author presses the hop bind at the keyboard, repeatedly and in both directions, and every single press fires — no silent no-op, no swallowed press.
   4. The pointer arrives on the correct destination screen and is never pinned against an edge, in both directions, with the author watching it land. Screen-centre accuracy is NOT the bar here: the author confirmed on 2026-09-10 that landing is at screen centre today and that screen centre is the wrong target — Phase 3.1 (HOP-05) owns moving it to the window nearest the crossed edge. If HOP-03 proves not to be a defect, recording that is how this criterion is met.
-  5. `il-doctor --test` reports 21/21 and a passing live round trip after the change, and the detached self-check still catches and recentres a deliberately failed hop.
+  5. `il-doctor --test` reports its full tally (23/23; the 21-check figure is `il-doctor` without `--test`) and a passing live round trip after the change, and the detached self-check still catches and recentres a deliberately failed hop.
 
-**Plans**: 5/6 plans executed in 4 waves
+**Plans**: 6/6 plans executed in 4 waves
 
 Plans:
 
@@ -73,7 +73,7 @@ Plans:
 - [x] 01-03-PLAN.md — Every exit path names itself; route 1's stressor, the watcher-gap assertion, and route 2 armed
 - [x] 01-04-PLAN.md — Replace the circular landing check at `il-doctor:110`, and settle HOP-03 as a finding rather than a repair
 - [x] 01-05-PLAN.md — Re-verify the corrected diff window `849b6ac..9d1f129`, then the root-cause determination with proven and inferred kept apart
-- [ ] 01-06-PLAN.md — Choose the fix shape at a blocking decision gate, ship it whole, and run the phase gate including the human criteria
+- [x] 01-06-PLAN.md — Choose the fix shape at a blocking decision gate, ship it whole, and run the phase gate including the human criteria
 
 ### Phase 2: Clean Handoff
 
