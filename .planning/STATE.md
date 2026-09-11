@@ -3,15 +3,15 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
-status: phase-complete
-stopped_at: Completed 01-06-PLAN.md — Phase 01 closed, human gate passed
+status: verification-gaps
+stopped_at: Phase 01 verified — gaps_found (5/6), CR-01 gap plan owed
 last_updated: "2026-09-11T16:50:00.000Z"
 last_activity: 2026-09-11
-last_activity_desc: Phase 01 complete — HOP-02 fixed and human-gated, HOP-03 closed as not-a-defect
+last_activity_desc: Phase 01 executed and human-gated; verifier found 1 gap (CR-01) — phase stays open
 state_head: c5cfeb92e62276041e4b80ed4c9c14dedff5a126
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 6
   completed_plans: 6
 ---
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 
 ## Current Position
 
-Phase: 01 (Regression Recovery) — COMPLETE
-Plan: 6 of 6
-Status: Phase closed; ready for the phase tail (aggregate → code review gate → verifier) then Phase 02
-Last activity: 2026-09-11 — Phase 01 complete, human gate passed
+Phase: 01 (Regression Recovery) — GAPS FOUND
+Plan: 6 of 6 executed; 1 gap-closure plan owed
+Status: Verifier returned gaps_found (5/6). Phase stays OPEN until CR-01 closes.
+Last activity: 2026-09-11 — code review + verifier both ran; both land on CR-01
 
-Progress: [██░░░░░░░░] 17% (1 of 6 phases)
+Progress: [█░░░░░░░░░] 0 of 6 phases complete (Phase 01 at 6/6 plans, 5/6 must-haves)
 
 ## Performance Metrics
 
@@ -98,7 +98,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Pending Todos
 
-- **CR-01 gap plan owed in Phase 01** (author's call, 2026-09-11). Code review found the phase's own `--cursor-file` reattach has no handling for `journalctl`'s hard failure on an unreadable cursor — a permanent silent crash loop under `Restart=always`, with the diagnostic discarded by `2>/dev/null` at `il-side-watch:71`, and `systemctl is-active` reporting `active` right through it. Not an input-path change, so fully script-testable.
+- **CR-01 gap plan owed in Phase 01 — now a VERIFIER GAP, not just a review finding.** `01-VERIFICATION.md` independently reproduced it (garbage cursor -> "Failed to seek to cursor: Invalid argument", exit 1, file left unrepaired) and fails the phase on it. (author's call, 2026-09-11). Code review found the phase's own `--cursor-file` reattach has no handling for `journalctl`'s hard failure on an unreadable cursor — a permanent silent crash loop under `Restart=always`, with the diagnostic discarded by `2>/dev/null` at `il-side-watch:71`, and `systemctl is-active` reporting `active` right through it. Not an input-path change, so fully script-testable.
 - **Phase tail still owed:** aggregate_results → code review gate → verifier → ROADMAP update.
 - **Route 2 disarm at phase close:** `il-repro --disarm`.
 

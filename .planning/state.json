@@ -6,7 +6,7 @@
     {
       "number": "1",
       "name": "Regression Recovery",
-      "status": "complete"
+      "status": "in_progress"
     },
     {
       "number": "2",
@@ -30,9 +30,9 @@
     }
   ],
   "next": {
-    "command": "/gsd-plan-phase 2",
-    "label": "Plan Phase 2 \u2014 Clean Handoff",
-    "reason": "Phase 01 complete (6/6 plans, human gate passed); phase tail then Phase 02"
+    "command": "/gsd-plan-phase 01 --gaps",
+    "label": "Plan the CR-01 gap closure",
+    "reason": "Phase 01 verifier returned gaps_found (5/6) \u2014 one gap blocks the phase goal"
   },
-  "updated_at": "2026-09-11T16:50:00.000Z"
+  "updated_at": "2026-09-11T17:15:00.000Z"
 }

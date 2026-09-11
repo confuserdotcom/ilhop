@@ -10,7 +10,7 @@ Requirements for the first packaged release. Each maps to exactly one roadmap ph
 ### Hop Correctness
 
 - [ ] **HOP-01**: The first chord pressed after a hop registers on the destination machine — no eaten keystroke, no modifier left latched in `CGEventSourceFlagsState`. The fix must not re-press modifiers through `ydotool` (that mechanism wedged real input on 2026-09-10 and is a closed decision).
-- [x] **HOP-02**: The hop fires on every press of the bind — the intermittent "sometimes doesn't fire" report is reproduced, root-caused, and closed. Reproduction precedes any fix.
+- [ ] **HOP-02**: The hop fires on every press of the bind — the intermittent "sometimes doesn't fire" report is reproduced, root-caused, and closed. Reproduction precedes any fix. **Reopened 2026-09-11 by the Phase 1 verifier (`01-VERIFICATION.md`, gaps_found 5/6).** The fix is shipped and passed the human gate, but the phase's own `--cursor-file` reattach (`il-side-watch:69-74`, commit `8408bcc`) can crash-loop silently and freeze `$STATE` forever — reintroducing exactly this requirement's defect class through code this phase shipped. Closes when the CR-01 gap plan lands.
 - [x] **HOP-03**: The pointer lands dead centre of the destination screen on every hop, in both directions — never at an edge, never off-centre. **Closed 2026-09-11 as NOT A DEFECT, not as a repair** — measured in `.planning/phases/01-regression-recovery/01-HOP-03-FINDING.md` per ROADMAP Phase 1 criterion 4's own clause that recording the finding is how the criterion is met. Screen centre being the *wrong target* is HOP-05's problem, not this one's.
 - [ ] **HOP-05**: The pointer lands at the centre of the window nearest the edge it crossed, and that window takes keyboard focus on arrival. With exactly one window open it lands at that window's centre; with none, it falls back to screen centre. Screen centre is not the target — on a two-window Mac it puts the cursor in the gap between them. Raised during Phase 1 discussion (`.planning/phases/01-regression-recovery/01-CONTEXT.md` D-19/D-20); supersedes HOP-03's screen-centre target once it lands.
 - [ ] **HOP-04**: Mac→Ryuk hop completes within the same ~50ms budget as Ryuk→Mac, warm or cold — the current ssh return leg (40–110ms warm, ~1.6s on a lapsed launchd control master) is brought into budget without reintroducing an awaited journald confirmation in the hot path.
@@ -71,7 +71,7 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | HOP-01 | Phase 2 | Pending |
-| HOP-02 | Phase 1 | Complete |
+| HOP-02 | Phase 1 | Gap closure pending |
 | HOP-03 | Phase 1 | Complete |
 | HOP-04 | Phase 2 | Pending |
 | HOP-06 | Phase 2 | Pending |

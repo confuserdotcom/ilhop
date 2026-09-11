@@ -42,7 +42,7 @@ keyboard can satisfy.
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
+- [ ] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
 - [ ] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
 - [ ] **Phase 3: Focus Chain Precision** - `ALT+H` is indistinguishable from the compositor's own focus-left until there is nowhere left to go
 - [ ] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
@@ -64,7 +64,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The pointer arrives on the correct destination screen and is never pinned against an edge, in both directions, with the author watching it land. Screen-centre accuracy is NOT the bar here: the author confirmed on 2026-09-10 that landing is at screen centre today and that screen centre is the wrong target — Phase 3.1 (HOP-05) owns moving it to the window nearest the crossed edge. If HOP-03 proves not to be a defect, recording that is how this criterion is met.
   5. `il-doctor --test` reports its full tally (23/23; the 21-check figure is `il-doctor` without `--test`) and a passing live round trip after the change, and the detached self-check still catches and recentres a deliberately failed hop.
 
-**Plans**: 6/6 plans executed in 4 waves
+**Plans**: 6/6 plans executed in 4 waves; verifier returned gaps_found (5/6) — one gap-closure plan owed for CR-01
 
 Plans:
 
