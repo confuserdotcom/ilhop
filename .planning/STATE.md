@@ -98,7 +98,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Pending Todos
 
-- **Due now: the parked invisible-cursor defect.** Parking condition was "until Phase 1 closes" — that is now. Decide backlog vs. a Phase 2 requirement. Write-up in `~/.local/share/ryoku/rashin/journal/2026-09-10.md`; candidate one-line fix written but deliberately not landed (input-path change, needs a human at the keyboard).
+- **CR-01 gap plan owed in Phase 01** (author's call, 2026-09-11). Code review found the phase's own `--cursor-file` reattach has no handling for `journalctl`'s hard failure on an unreadable cursor — a permanent silent crash loop under `Restart=always`, with the diagnostic discarded by `2>/dev/null` at `il-side-watch:71`, and `systemctl is-active` reporting `active` right through it. Not an input-path change, so fully script-testable.
 - **Phase tail still owed:** aggregate_results → code review gate → verifier → ROADMAP update.
 - **Route 2 disarm at phase close:** `il-repro --disarm`.
 
@@ -117,6 +117,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Roadmap Evolution
 
+- HOP-06 (invisible cursor after a Mac→Ryuk return leg) unparked at Phase 1 close and added to Phase 2 as a third requirement, with ROADMAP criterion 6. It is far-side state immediately after a hop, the same class as HOP-01 and HOP-04. v1 requirement count 13 → 14.
 - Phase 03.1 inserted after Phase 3: Window-Centre Landing (HOP-05) - planned scope raised during Phase 1 discussion, placed before Phase 5 so packaging does not document landing behaviour this phase changes
 
 ## Deferred Items
