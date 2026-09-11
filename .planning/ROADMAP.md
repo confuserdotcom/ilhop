@@ -64,7 +64,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The pointer arrives on the correct destination screen and is never pinned against an edge, in both directions, with the author watching it land. Screen-centre accuracy is NOT the bar here: the author confirmed on 2026-09-10 that landing is at screen centre today and that screen centre is the wrong target — Phase 3.1 (HOP-05) owns moving it to the window nearest the crossed edge. If HOP-03 proves not to be a defect, recording that is how this criterion is met.
   5. `il-doctor --test` reports its full tally (23/23; the 21-check figure is `il-doctor` without `--test`) and a passing live round trip after the change, and the detached self-check still catches and recentres a deliberately failed hop.
 
-**Plans**: 6/6 plans executed in 4 waves; verifier returned gaps_found (5/6) — one gap-closure plan owed for CR-01
+**Plans**: 6/6 plans executed in 4 waves; verifier returned gaps_found (5/6) — 01-07-PLAN.md closes the owed CR-01 gap (wave 5)
 
 Plans:
 
@@ -74,6 +74,7 @@ Plans:
 - [x] 01-04-PLAN.md — Replace the circular landing check at `il-doctor:110`, and settle HOP-03 as a finding rather than a repair
 - [x] 01-05-PLAN.md — Re-verify the corrected diff window `849b6ac..9d1f129`, then the root-cause determination with proven and inferred kept apart
 - [x] 01-06-PLAN.md — Choose the fix shape at a blocking decision gate, ship it whole, and run the phase gate including the human criteria
+- [ ] 01-07-PLAN.md — Gap closure (CR-01): bound `il-side-watch`'s cursor-reattach crash loop to one restart, make the failure discoverable, and add a crash-loop-aware `il-doctor` check — fully autonomous, no human gate
 
 ### Phase 2: Clean Handoff
 
