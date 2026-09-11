@@ -14,6 +14,7 @@ Requirements for the first packaged release. Each maps to exactly one roadmap ph
 - [x] **HOP-03**: The pointer lands dead centre of the destination screen on every hop, in both directions — never at an edge, never off-centre. **Closed 2026-09-11 as NOT A DEFECT, not as a repair** — measured in `.planning/phases/01-regression-recovery/01-HOP-03-FINDING.md` per ROADMAP Phase 1 criterion 4's own clause that recording the finding is how the criterion is met. Screen centre being the *wrong target* is HOP-05's problem, not this one's.
 - [ ] **HOP-05**: The pointer lands at the centre of the window nearest the edge it crossed, and that window takes keyboard focus on arrival. With exactly one window open it lands at that window's centre; with none, it falls back to screen centre. Screen centre is not the target — on a two-window Mac it puts the cursor in the gap between them. Raised during Phase 1 discussion (`.planning/phases/01-regression-recovery/01-CONTEXT.md` D-19/D-20); supersedes HOP-03's screen-centre target once it lands.
 - [ ] **HOP-04**: Mac→Ryuk hop completes within the same ~50ms budget as Ryuk→Mac, warm or cold — the current ssh return leg (40–110ms warm, ~1.6s on a lapsed launchd control master) is brought into budget without reintroducing an awaited journald confirmation in the hot path.
+- [ ] **HOP-06**: After a Mac→Ryuk return leg the pointer is **drawn**, not merely present — no jiggle required to make it reappear. `centre_nastralis()` (`il-jump:142-151`) recentres with a `hyprctl` cursor warp, which updates the logical pointer but emits no pointer event, so no client re-sets a cursor image. Parked during Phase 1 by the author's explicit decision, unparked and assigned to Phase 2 on 2026-09-11 because it is far-side state immediately after a hop, the same class as HOP-01 and HOP-04. Candidate one-line fix is written (a `+1/-1` ydotool nudge after the warp) but deliberately NOT landed: it touches the input path, so it gates on a human at the keyboard, and ydotool deltas land at ~2x after accel so the nudge netting to zero must be measured, not reasoned about. Write-up: `~/.local/share/ryoku/rashin/journal/2026-09-10.md`.
 
 ### Focus Chain
 
@@ -73,6 +74,7 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | HOP-02 | Phase 1 | Complete |
 | HOP-03 | Phase 1 | Complete |
 | HOP-04 | Phase 2 | Pending |
+| HOP-06 | Phase 2 | Pending |
 | HOP-05 | Phase 3.1 | Pending |
 | FOCUS-01 | Phase 3 | Pending |
 | FOCUS-02 | Phase 3 | Pending |
@@ -84,8 +86,8 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | PKG-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 13 total
-- Mapped to phases: 13 ✓
+- v1 requirements: 14 total
+- Mapped to phases: 14 ✓
 - Unmapped: 0 ✓
 - Duplicates (a requirement in two phases): 0 ✓
 
@@ -94,7 +96,7 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | Phase | Requirements | Count |
 |-------|--------------|-------|
 | Phase 1 — Regression Recovery | HOP-02, HOP-03 | 2 |
-| Phase 2 — Clean Handoff | HOP-01, HOP-04 | 2 |
+| Phase 2 — Clean Handoff | HOP-01, HOP-04, HOP-06 | 3 |
 | Phase 3 — Focus Chain Precision | FOCUS-01, FOCUS-02 | 2 |
 | Phase 3.1 — Window-Centre Landing | HOP-05 | 1 |
 | Phase 4 — The ilhop Surface | DIAG-01, DIAG-02, PKG-04 | 3 |

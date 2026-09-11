@@ -43,7 +43,7 @@ keyboard can satisfy.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
-- [ ] **Phase 2: Clean Handoff** - The first chord after a hop lands, and the return leg is as fast as the outbound
+- [ ] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
 - [ ] **Phase 3: Focus Chain Precision** - `ALT+H` is indistinguishable from the compositor's own focus-left until there is nowhere left to go
 - [ ] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
 - [ ] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
@@ -79,7 +79,7 @@ Plans:
 
 **Goal**: A hop delivers the next chord to the destination machine and feels the same in both directions.
 **Depends on**: Phase 1
-**Requirements**: HOP-01, HOP-04
+**Requirements**: HOP-01, HOP-04, HOP-06
 **Success Criteria** (what must be TRUE):
 
   1. The author holds a modifier across a hop and the first chord on the destination machine registers — verified by a real AeroSpace workspace actually switching, for each of ALT, Shift, Ctrl, and Cmd in turn. A `CGEventSourceFlagsState` read showing zero is not accepted as proof of this criterion.
@@ -87,6 +87,7 @@ Plans:
   3. No code path holds a synthetic key-down open across a wait: killing any helper mid-run leaves nothing held, confirmed by `il-heldmods` reading clear afterwards. Modifiers are never re-pressed through `ydotool` — that mechanism is a closed decision.
   4. A Mac→Ryuk hop completes inside the same ~50ms budget as Ryuk→Mac, measured both warm and after the control master has lapsed, with no awaited journald confirmation anywhere in the hot path.
   5. The author runs the changed code as the daily driver for a full working session with no wedged keyboard, no wedged mouse, and no reach for `il-reset`.
+  6. After a Mac→Ryuk return leg the pointer is drawn without a jiggle, with the author watching it land (HOP-06). The `~2x`-after-accel behaviour of any ydotool nudge is measured, not assumed to cancel. Ruled out on evidence during Phase 1 and not to be re-investigated: Hyprland is not hiding the cursor (`cursor:inactive_timeout`, `hide_on_key_press`, `hide_on_touch`, `no_warps` all unset) and `no_hardware_cursors` is not implicated, since real motion restores the cursor.
 
 **Plans**: TBD
 
