@@ -6,7 +6,7 @@
     {
       "number": "1",
       "name": "Regression Recovery",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "2",
@@ -30,9 +30,9 @@
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 01 of 6 · executing"
+    "command": "/gsd-plan-phase 2",
+    "label": "Plan Phase 2 \u2014 Clean Handoff",
+    "reason": "Phase 01 complete (6/6 plans, human gate passed); phase tail then Phase 02"
   },
-  "updated_at": "2026-09-10T23:18:23.530Z"
+  "updated_at": "2026-09-11T16:50:00.000Z"
 }

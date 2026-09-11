@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
-status: executing
-stopped_at: Completed 01-05-PLAN.md
-last_updated: "2026-09-10T23:18:31.932Z"
-last_activity: 2026-09-10
-last_activity_desc: Phase 01 execution started
+status: phase-complete
+stopped_at: Completed 01-06-PLAN.md — Phase 01 closed, human gate passed
+last_updated: "2026-09-11T16:50:00.000Z"
+last_activity: 2026-09-11
+last_activity_desc: Phase 01 complete — HOP-02 fixed and human-gated, HOP-03 closed as not-a-defect
 state_head: c5cfeb92e62276041e4b80ed4c9c14dedff5a126
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -27,18 +27,18 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 
 ## Current Position
 
-Phase: 01 (Regression Recovery) — EXECUTING
-Plan: 5 of 6
-Status: Ready to execute
-Last activity: 2026-09-10 — Phase 01 execution started
+Phase: 01 (Regression Recovery) — COMPLETE
+Plan: 6 of 6
+Status: Phase closed; ready for the phase tail (aggregate → code review gate → verifier) then Phase 02
+Last activity: 2026-09-11 — Phase 01 complete, human gate passed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 17% (1 of 6 phases)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 6
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P03 | 35min | 2 tasks | 2 files |
 | Phase 01 P04 | 50min | 3 tasks | 3 files |
 | Phase 01 P05 | ~55min | 2 tasks | 1 files |
+| Phase 01 P06 | ~50min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -89,9 +90,23 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: [Phase 01]: Corrected two unverified claims found while re-deriving the diff window and determination: 92f64bc landed 5h52m37s after 849b6ac, not 'about an hour later'; RESEARCH's mechanism #2 ranking rationale ('trigger so-far unobserved') is outdated -- 01-EVIDENCE.md already measured it firing 7 times
 - [Phase 01]: [Phase 01]: Did not run requirements mark-complete for HOP-02 or HOP-03 in plan 01-05 -- root-cause determination is written but closure (choosing and shipping a fix, running the human-at-keyboard gate) is explicitly plan 01-06's work
 
+- [Phase 01]: Human gate PASSED 2026-09-11 against a bar agreed before the presses (10 ALT+C presses, >=4 each direction, every one fires). Log tally for the gate window 16:43:17.828-16:43:54.728: 27 dispatch, 0 already-on-side, 0 of every other exit path, 0 retry-forced — the double-press override never had to rescue anything
+- [Phase 01]: HOP-02 and HOP-03 both marked complete. HOP-03 closed as NOT A DEFECT per 01-HOP-03-FINDING.md, not as a repair
+- [Phase 01]: Two il-repro FAILs seen mid-session were PROVEN (not argued) to be the author's hand on the mouse — hands-off re-run returned 80 ok / 0 failed, exit 0. Filed as a Phase 4 harness defect: a pointer-motion probe cannot distinguish the code under test from a human using the machine
+- [Phase 01]: Three corrections to the .continue-here.md handoff, recorded not silently fixed — six commits carry 01-06 not five (e921752 omitted); Route 2 was NOT still armed (tmpfs, wiped by two reboots); il-repro's check total is not a fixed invariant (83 disarmed / 80 armed)
+- [Phase 01]: Latency improved against the 01-EVIDENCE.md baseline — 24ms out (was 20ms) and 45ms back (was 53ms); the return leg was the one leg over PROJECT.md's ~50ms budget and is now 5ms under it
+
 ### Pending Todos
 
-None yet.
+- **Due now: the parked invisible-cursor defect.** Parking condition was "until Phase 1 closes" — that is now. Decide backlog vs. a Phase 2 requirement. Write-up in `~/.local/share/ryoku/rashin/journal/2026-09-10.md`; candidate one-line fix written but deliberately not landed (input-path change, needs a human at the keyboard).
+- **Phase tail still owed:** aggregate_results → code review gate → verifier → ROADMAP update.
+- **Route 2 disarm at phase close:** `il-repro --disarm`.
+
+### Phase 4 (DIAG) inherits, found during Phase 01
+
+- `il-repro`'s pointer-motion probe false-FAILs on a machine in use — needs an exclusive-input window or a second independent signal before a motion FAIL is believed.
+- `il-repro`'s check total moves between runs (83 disarmed / 80 armed); one of the three-check delta traced to the arm-conditional skip at `il-repro:177-178`, the other two untraced. A moving denominator weakens "N ok, 0 failed" as a gate.
+- `il-doctor:78` calls bare `hyprctl binds -j` while `:126` routes through the `hypr()` wrapper at `:25`. Without `HYPRLAND_INSTANCE_SIGNATURE` the bind checks emit a false FAIL with a misleading remedy.
 
 ### Blockers/Concerns
 
@@ -114,6 +129,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T23:18:31.885Z
-Stopped at: Completed 01-05-PLAN.md
-Resume file: None
+Last session: 2026-09-11T16:50:00.000Z
+Stopped at: Completed 01-06-PLAN.md — Phase 01 closed
+Resume file: None (`.continue-here.md` removed; its handoff is superseded by 01-06-SUMMARY.md)
