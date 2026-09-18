@@ -1,47 +1,29 @@
 ---
 phase: 01-regression-recovery
 verified: 2026-09-11T17:10:00Z
-status: gaps_found
-score: 5/6 must-haves verified
+re_verified: 2026-09-18T18:05:00Z
+status: passed
+score: 6/6 must-haves verified
 covered_files: [".planning/REQUIREMENTS.md", ".planning/ROADMAP.md", ".planning/phases/01-regression-recovery/01-01-PLAN.md", ".planning/phases/01-regression-recovery/01-01-SUMMARY.md", ".planning/phases/01-regression-recovery/01-02-PLAN.md", ".planning/phases/01-regression-recovery/01-02-SUMMARY.md", ".planning/phases/01-regression-recovery/01-03-PLAN.md", ".planning/phases/01-regression-recovery/01-03-SUMMARY.md", ".planning/phases/01-regression-recovery/01-04-PLAN.md", ".planning/phases/01-regression-recovery/01-04-SUMMARY.md", ".planning/phases/01-regression-recovery/01-05-PLAN.md", ".planning/phases/01-regression-recovery/01-05-SUMMARY.md", ".planning/phases/01-regression-recovery/01-06-PLAN.md", ".planning/phases/01-regression-recovery/01-06-SUMMARY.md", ".planning/phases/01-regression-recovery/01-A1-RESULT.md", ".planning/phases/01-regression-recovery/01-EVIDENCE.md", ".planning/phases/01-regression-recovery/01-HOP-03-FINDING.md", ".planning/phases/01-regression-recovery/01-REVIEW.md", ".planning/phases/01-regression-recovery/01-ROOTCAUSE.md"]
 covered_digest: "v1:sha256:ccf5d8b5f791588b1900b9e3e11c289b99aed9816cc76247ea220a34dc79e910"
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
+gaps: []
+closed_gaps:
   - truth: "The fix does not reintroduce a silent, permanent no-op regression through the mechanism it modified (ROADMAP Phase 1 goal: 'the hop fires on every press'; success criterion 3: 'no silent no-op, no swallowed press')"
-    status: failed
-    reason: >
-      il-side-watch's new --cursor-file reattach — introduced by this phase's own
-      commit 8408bcc, as part of the HOP-02 fix — has no handling for journalctl's
-      documented hard-failure mode on an unreadable/unseekable cursor file.
-      Independently reproduced during this verification (not just taken from
-      01-REVIEW.md): a scratch cursor file containing "garbage-not-a-cursor" makes
-      `journalctl --user -u input-leap-server.service -f -n 0 --cursor-file=... `
-      print "Failed to seek to cursor: Invalid argument" to stderr and exit 1
-      immediately, with the cursor file left untouched (still garbage) afterward.
-      il-side-watch:71 discards that one diagnostic line via `2>/dev/null`, and
-      il-side-watch:69-74 has no exit-status check and never deletes or repairs
-      $CURSOR after a failure. Under the real unit config
-      (il-side-watch.service: Restart=always, RestartSec=3,
-      StartLimitIntervalSec=0), this becomes a permanent, fast crash loop:
-      $STATE (`$XDG_RUNTIME_DIR/il-side`) is never written again, every press
-      becomes a silent no-op — the exact class of defect HOP-02 was chartered
-      to close — and it is now reachable through code this phase itself shipped.
-      Filed as 01-REVIEW.md CR-01 (the review's only Critical finding). The
-      project's own .planning/STATE.md lists "CR-01 gap plan owed in Phase 01"
-      under Pending Todos as of this verification — the author has already
-      decided this must close inside Phase 1, and as of this session it has not.
-      A concrete real-world byte-corruption trigger for the cursor file remains
-      unestablished (per the review's own honest caveat), but the failure mode
-      itself, its total absence of handling, and its consequence (permanent
-      silent no-op) are all independently demonstrated, not merely asserted.
-    artifacts:
-      - path: "/home/nastralis/.local/bin/il-side-watch"
-        issue: "Lines 69-74: no exit-status check on the journalctl --cursor-file pipeline, no $CURSOR cleanup on failure, stderr unconditionally discarded"
-    missing:
-      - "Check journalctl's exit status after the reattach pipeline; on nonzero, delete $CURSOR before the next Restart=always retry so the next start falls back to the documented -n 0 cold-start path instead of looping on the same unreadable cursor forever"
-      - "Stop discarding journalctl's stderr unconditionally on this command; route it through a dbg()-style sink or let it reach the unit's own journal so a future occurrence is discoverable without a code reviewer removing 2>/dev/null by hand"
-      - "Land the gap-closure plan STATE.md's own Pending Todos already anticipates for CR-01 before Phase 1 is considered closed against its stated goal"
+    id: CR-01
+    status: closed
+    closed_by: "01-07-PLAN.md / 01-07-SUMMARY.md"
+    closed_at: 2026-09-18T18:05:00Z
+    evidence:
+      - "il-side-watch:117 - the unconditional 2>/dev/null is gone; journalctl's exit status is captured through a portable brace-group + CURSOR_RC side-file rather than pipefail/PIPESTATUS"
+      - "il-side-watch:124-130 - nonzero exit writes a named diagnostic to stderr (which now reaches the unit's own journal) and deletes $CURSOR, so the next Restart=always cycle cold-starts via the documented -n 0 fallback. Bounded to exactly one restart, not an unbounded series"
+      - "il-doctor:81-88 - crash-loop detector greps systemd's own 'Scheduled restart job' lines over a trailing 10s window; >=2 is a loop. Chosen because systemctl is-active was measured reporting 'active' mid-loop"
+      - "il-repro --cursor-crash-loop, folded into --all - permanent regression gate proving both halves (self-heal bounded; detector accurate on a real loop and not false-positive on one legitimate restart)"
+    live_recheck_2026_09_18:
+      - "il-doctor (non-invasive): 21 check(s) ok, 0 failed - including 'il-side-watch.service restart history looks healthy (0 restart(s) in the last 10s)'"
+      - "il-side-watch.service active, no restarts, up 1d21h since 2026-09-16 20:37:51"
+      - "The --cursor-crash-loop induction was deliberately NOT re-run this session: it intentionally corrupts the cursor and restarts the watcher, and the author was mid-triage on an unrelated input-leap client issue. Its live green run (6 ok / 0 failed) is recorded in 01-07-SUMMARY.md D2/D3 against this same code"
 deferred:
   - truth: "il-repro's pointer-motion probe false-FAILs when a human touches the mouse during a run (needs an exclusive-input window or a second independent signal before a motion FAIL is believed)"
     addressed_in: "Phase 4"
@@ -149,3 +131,30 @@ What is NOT in question: the reproduction, root-cause determination, the shipped
 
 _Verified: 2026-09-11T17:10:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Re-verification — 2026-09-18
+
+**Status: gaps_found (5/6) → passed (6/6).**
+
+The single gap that reopened this phase (CR-01) is closed by `01-07`, which landed all three of the gap's own `missing:` items:
+
+| `missing:` item from the 2026-09-11 gap | Where it landed | Checked |
+|---|---|---|
+| Check journalctl's exit status after the reattach pipeline; on nonzero, delete `$CURSOR` so the next restart cold-starts via `-n 0` | `il-side-watch:115-131` (`CURSOR_RC` sidecar, `rm -f "$CURSOR"`, `exit "${rc:-0}"`) | ✅ read live |
+| Stop discarding journalctl's stderr unconditionally, so a future occurrence is discoverable | `il-side-watch:117` (`2>/dev/null` removed) + `:127` (named diagnostic to `>&2`) | ✅ read live |
+| Land the gap-closure plan STATE.md's Pending Todos anticipated | `01-07-PLAN.md` / `01-07-SUMMARY.md`, 3 commits | ✅ |
+
+Beyond the gap's literal ask, `01-07` also added the crash-loop detector the gap's *reasoning* implied was needed — the original finding noted `systemctl is-active` reports `active` on roughly 1 in 10 polls mid-loop, so a point-in-time liveness check could not catch this class at all. `il-doctor:81-88` replaces that with a journal-history check (systemd's own `Scheduled restart job, restart counter is at N` line, ≥2 inside a trailing 10s window), and `il-repro --cursor-crash-loop` makes both halves a permanent regression gate rather than a one-off finding.
+
+**Live recheck this session:** `il-doctor` 21 ok / 0 failed, including the new crash-loop check reporting healthy; `il-side-watch.service` active with zero restarts, up 1d 21h.
+
+**Deliberately not re-run:** the `--cursor-crash-loop` induction. It corrupts the cursor file and restarts the watcher on purpose, and the author was triaging an unrelated input-leap client problem at the time. Its live green run (6 ok / 0 failed, plus the unfixed-code reproduction at 3 ok / 3 failed) is recorded in `01-07-SUMMARY.md` D1–D3 against this same code, and the static read above independently confirms the mechanism is present. Saying so rather than quietly skipping it.
+
+The three `deferred:` items above are unchanged and remain Phase 4's.
+
+---
+
+_Re-verified: 2026-09-18T18:05:00Z_
+_Verifier: Claude (Opus 5)_
