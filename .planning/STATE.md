@@ -33,10 +33,10 @@ Status: Re-verified 2026-09-18 — passed (6/6). CR-01 closed by 01-07.
 Last activity: 2026-09-18 — CR-01 gap verified closed in live code; phase records updated
 
 Next: Phase 02 (Clean Handoff) — HOP-01, HOP-04, HOP-06. Not planned yet.
-**Phase 02 is gated on the Mac being reachable** — all three requirements are far-side
-state, and criterion 2's `CGEventFlags` mask measurement must happen before the HOP-01
-fix is designed (if the real modifier bits read clear, the fix belongs elsewhere).
-Planning can proceed offline; verification cannot.
+**The Mac is reachable** (ssh 0.120s over LAN mDNS via `Host mac`, up 10 days; Tailscale
+showing it offline is irrelevant — the hop path does not use `mac-ts`). An earlier note in
+this file claiming Phase 02 was "gated on the Mac being reachable" was wrong and is retracted.
+Phase 02's *human* criteria still need the author at the keyboard; nothing else is blocked.
 
 Progress: [██░░░░░░░░] 1 of 6 phases complete (Phase 01 at 7/7 plans, 6/6 must-haves)
 
@@ -132,6 +132,44 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 - HOP-06 (invisible cursor after a Mac→Ryuk return leg) unparked at Phase 1 close and added to Phase 2 as a third requirement, with ROADMAP criterion 6. It is far-side state immediately after a hop, the same class as HOP-01 and HOP-04. v1 requirement count 13 → 14.
 - Phase 03.1 inserted after Phase 3: Window-Centre Landing (HOP-05) - planned scope raised during Phase 1 discussion, placed before Phase 5 so packaging does not document landing behaviour this phase changes
+
+### Pre-Phase-2 measurement — 2026-09-18: criterion 2 is answered, and it redirects HOP-01
+
+Taken read-only over ssh before any Phase 2 planning, because ROADMAP Phase 2 criterion 2
+requires it *before* the HOP-01 fix is designed. Source: `/Users/Apple/tmp/modstate.c`
+(binary at `~/.local/bin/modstate` on the Mac).
+
+**`modstate` never masks before it judges.** Its verdict line is literally
+`if (f == 0) printf(" CLEAN"); else printf("  <-- DIRTY");` — so *any* non-zero
+`CGEventSourceFlagsState` value is reported DIRTY, including values with zero modifier bits.
+
+Three values observed in one 60-second window, masked against the union of the six flags
+modstate itself tests (`kCGEventFlagMaskAlphaShift|Shift|Control|Alternate|Command|SecondaryFn`
+= `0x009F0000`):
+
+| Raw | `& 0x009F0000` | Actually held | modstate verdict |
+|---|---|---|---|
+| `0x00080120` | `0x00080000` | Option (genuine; `0x20` = left-alt device bit, `0x100` = NonCoalesced) | DIRTY — correct |
+| `0x00000100` | `0` | nothing (NonCoalesced only) | DIRTY — **false positive** |
+| `0x20000000` | `0` | nothing | DIRTY — **false positive** |
+
+`0x20000000` is the exact value ROADMAP criterion 2 flagged as matching no documented
+`CGEventFlags` constant. It matches none because it **is** none: masked against the documented
+modifier bits it reads clear. Six consecutive samples returned it as the steady state.
+
+**Consequence for Phase 2 (must be carried into planning, not re-derived):**
+- The persistent "a modifier is latched on the Mac" signal underpinning HOP-01 is substantially
+  an artifact of the measuring instrument. Criterion 2's own escape clause applies: *"if the real
+  modifier bits read clear the fix belongs somewhere else entirely."*
+- HOP-01 is **not** thereby disproved. The first sample was a real Option hold that cleared on its
+  own within seconds — so genuine latches occur, but transiently, not permanently as the DIRTY
+  readings implied. Whether a transient latch is long enough to eat the first chord after a hop is
+  the open question, and it is a *timing* question, not a *stuck-flag* question.
+- Fixing `modstate.c` (mask before judging, print the masked value) is a prerequisite for trusting
+  any further HOP-01 evidence. It is a diagnostic-only change, no input-path risk, no human gate —
+  but it belongs in a Phase 2 plan, not an ad-hoc edit, and was deliberately not made here.
+- Every prior HOP-01 observation recorded via modstate's DIRTY verdict should be re-read with this
+  in mind before it is used as evidence.
 
 ### Field note — 2026-09-18 (not a phase defect)
 
