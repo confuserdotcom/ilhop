@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 01
 current_phase_name: Regression Recovery
-status: verification-gaps
-stopped_at: Phase 01 verified — gaps_found (5/6), CR-01 gap plan owed
-last_updated: "2026-09-11T16:50:00.000Z"
-last_activity: 2026-09-11
-last_activity_desc: Phase 01 executed and human-gated; verifier found 1 gap (CR-01) — phase stays open
+status: phase-complete
+stopped_at: Phase 01 COMPLETE — re-verified passed (6/6), CR-01 closed by 01-07
+last_updated: "2026-09-18T18:05:00.000Z"
+last_activity: 2026-09-18
+last_activity_desc: 01-07 closed the CR-01 gap; Phase 01 re-verified passed (6/6) and closed. Phase 02 is next but blocked on Mac availability
 state_head: c5cfeb92e62276041e4b80ed4c9c14dedff5a126
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 1
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
@@ -23,22 +23,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-10)
 
 **Core value:** Pressing the hop key always lands you on the other machine, ready to type, with no lost keystroke and no wedged input device.
-**Current focus:** Phase 01 — Regression Recovery
+**Current focus:** Phase 02 — Clean Handoff (not yet planned)
 
 ## Current Position
 
-Phase: 01 (Regression Recovery) — GAPS FOUND
-Plan: 6 of 6 executed; 1 gap-closure plan owed
-Status: Verifier returned gaps_found (5/6). Phase stays OPEN until CR-01 closes.
-Last activity: 2026-09-11 — code review + verifier both ran; both land on CR-01
+Phase: 01 (Regression Recovery) — COMPLETE
+Plan: 7 of 7 executed
+Status: Re-verified 2026-09-18 — passed (6/6). CR-01 closed by 01-07.
+Last activity: 2026-09-18 — CR-01 gap verified closed in live code; phase records updated
 
-Progress: [█░░░░░░░░░] 0 of 6 phases complete (Phase 01 at 6/6 plans, 5/6 must-haves)
+Next: Phase 02 (Clean Handoff) — HOP-01, HOP-04, HOP-06. Not planned yet.
+**Phase 02 is gated on the Mac being reachable** — all three requirements are far-side
+state, and criterion 2's `CGEventFlags` mask measurement must happen before the HOP-01
+fix is designed (if the real modifier bits read clear, the fix belongs elsewhere).
+Planning can proceed offline; verification cannot.
+
+Progress: [██░░░░░░░░] 1 of 6 phases complete (Phase 01 at 7/7 plans, 6/6 must-haves)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -64,6 +70,7 @@ Progress: [█░░░░░░░░░] 0 of 6 phases complete (Phase 01 at 6
 | Phase 01 P04 | 50min | 3 tasks | 3 files |
 | Phase 01 P05 | ~55min | 2 tasks | 1 files |
 | Phase 01 P06 | ~50min | 3 tasks | 5 files |
+| Phase 01 P07 | — | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -95,12 +102,18 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Two il-repro FAILs seen mid-session were PROVEN (not argued) to be the author's hand on the mouse — hands-off re-run returned 80 ok / 0 failed, exit 0. Filed as a Phase 4 harness defect: a pointer-motion probe cannot distinguish the code under test from a human using the machine
 - [Phase 01]: Three corrections to the .continue-here.md handoff, recorded not silently fixed — six commits carry 01-06 not five (e921752 omitted); Route 2 was NOT still armed (tmpfs, wiped by two reboots); il-repro's check total is not a fixed invariant (83 disarmed / 80 armed)
 - [Phase 01]: Latency improved against the 01-EVIDENCE.md baseline — 24ms out (was 20ms) and 45ms back (was 53ms); the return leg was the one leg over PROJECT.md's ~50ms budget and is now 5ms under it
+- [Phase 01]: CR-01 closed by 01-07 — the self-heal is bounded to exactly one `Restart=always` cycle, not "fixed" in the sense of never failing: a corrupt cursor still costs one restart and ~3s of unreplayed transitions. That cost is stated in the code, not hidden
+- [Phase 01]: The crash-loop check is journal-history based (grep systemd's own `Scheduled restart job` line over a trailing 10s window), deliberately NOT `systemctl is-active` — CR-01 measured `is-active` reporting `active` on roughly 1 in 10 polls mid-loop
+- [Phase 01]: WR-01 (a well-formed-but-unresolvable cursor replaying the full retained backlog) explicitly deferred to Phase 4, not fixed — it converges to the correct value rather than freezing, a materially lower-severity shape, and fixing it needs this journal's retention policy plus a place to log a large unexpected replay
+- [Phase 01]: 01-07's own dual-branch assertion caught a real self-referential bug live — il-doctor's PASS text originally read "is not crash-looping", which contains the substring the reproduction mode matched on, so PASS and FAIL were indistinguishable. Reworded to "restart history looks healthy". The lesson: a health check's wording is part of what its test tests
+- [Phase 01]: Re-verification 2026-09-18 deliberately did NOT re-run the `--cursor-crash-loop` induction (it corrupts the cursor and restarts the watcher on purpose, and the author was mid-triage on an unrelated input-leap client issue). Closed on a static read of the live code plus 01-07's recorded live run — and said so rather than implying a fresh run
 
 ### Pending Todos
 
-- **CR-01 gap plan owed in Phase 01 — now a VERIFIER GAP, not just a review finding.** `01-VERIFICATION.md` independently reproduced it (garbage cursor -> "Failed to seek to cursor: Invalid argument", exit 1, file left unrepaired) and fails the phase on it. (author's call, 2026-09-11). Code review found the phase's own `--cursor-file` reattach has no handling for `journalctl`'s hard failure on an unreadable cursor — a permanent silent crash loop under `Restart=always`, with the diagnostic discarded by `2>/dev/null` at `il-side-watch:71`, and `systemctl is-active` reporting `active` right through it. Not an input-path change, so fully script-testable.
-- **Phase tail still owed:** aggregate_results → code review gate → verifier → ROADMAP update.
-- **Route 2 disarm at phase close:** `il-repro --disarm`.
+- *(none blocking)* — Phase 01's three owed items are all discharged:
+  - **CR-01 gap plan** — landed as `01-07`, re-verified 2026-09-18 (`il-side-watch:115-131`, `il-doctor:81-88`, `il-repro --cursor-crash-loop`).
+  - **Phase tail** (aggregate → code review → verifier → ROADMAP) — complete.
+  - **Route 2 disarm** (`il-repro --disarm`) — discharged for free: `$XDG_RUNTIME_DIR/ilhop-debug.on` is on tmpfs and was wiped by the 2026-09-16 reboot. Confirmed absent 2026-09-18. `ILHOP_DEBUG` is currently OFF; re-arm before any session where a failure should self-explain.
 
 ### Phase 4 (DIAG) inherits, found during Phase 01
 
@@ -120,6 +133,24 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - HOP-06 (invisible cursor after a Mac→Ryuk return leg) unparked at Phase 1 close and added to Phase 2 as a third requirement, with ROADMAP criterion 6. It is far-side state immediately after a hop, the same class as HOP-01 and HOP-04. v1 requirement count 13 → 14.
 - Phase 03.1 inserted after Phase 3: Window-Centre Landing (HOP-05) - planned scope raised during Phase 1 discussion, placed before Phase 5 so packaging does not document landing behaviour this phase changes
 
+### Field note — 2026-09-18 (not a phase defect)
+
+Author reported input-leap "not working" and planned a Linux reboot. Investigated
+before closing the phase, since a broken input-leap would false-FAIL the gate:
+
+- `input-leap-server.service` healthy, up 1d 21h. `il-side-watch.service` healthy, zero restarts.
+- `il-doctor`: 21 ok / 0 failed (the 21-check figure is the documented non-`--test` tally).
+- The Mac client dropped at 17:35:10 with `SSL routines::unexpected eof while reading`, then
+  reconnected cleanly 10s later (fingerprint matched, TLS 1.3). Connected since.
+- Continuous clipboard `missequenced` spam (~10 lines / 10 min) — the one genuinely abnormal
+  signal, originating client-side.
+- `ssh mac` answers in 0.120s. The hop path uses `Host mac` → `MacBook-Air.local` over LAN
+  mDNS, **not** `mac-ts`/Tailscale — so Tailscale showing the Mac offline (last seen 3d)
+  does not affect the hop.
+
+Conclusion: nothing server-side to fix; a Linux reboot was not indicated. Filed here because
+the clipboard missequence behaviour is unexplained and may resurface.
+
 ## Deferred Items
 
 Items acknowledged and deferred at milestone close, most recent first:
@@ -130,6 +161,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-11T16:50:00.000Z
-Stopped at: Completed 01-06-PLAN.md — Phase 01 closed
-Resume file: None (`.continue-here.md` removed; its handoff is superseded by 01-06-SUMMARY.md)
+Last session: 2026-09-18T18:05:00.000Z
+Stopped at: Phase 01 closed for real — 01-07 executed, re-verified passed (6/6), all records updated
+Resume file: None. Next command: `/gsd-plan-phase 02` (planning is safe offline; Phase 2 verification needs the Mac)
