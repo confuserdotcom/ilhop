@@ -18,8 +18,8 @@ the two defects that were recorded tested-good on 2026-09-09 and are therefore
 suspected regressions from the `9d1f129` revert — reproduce and diff against
 known-good before theorising. Phase 2 takes the two that both concern far-side
 state immediately after a hop, and are the ones that carry the project's scar.
-Phase 3 takes the focus chain, which is isolated to one component and interacts
-with nothing else. Phase 4 renames the surface and lands the diagnostics under it.
+Phase 3 (the focus chain) was dropped on 2026-09-26: `ALT+C` is the only hop key.
+Phase 3.1 lands the pointer in the right window. Phase 4 renames the surface and lands the diagnostics under it.
 Phase 5 makes it installable standing alone.
 
 **The constraint that governs every phase below.** On 2026-09-10 a fix shipped on
@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
 - [ ] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
-- [ ] **Phase 3: Focus Chain Precision** - `ALT+H` is indistinguishable from the compositor's own focus-left until there is nowhere left to go
+- [-] ~~**Phase 3: Focus Chain Precision**~~ - DROPPED 2026-09-26: auto-hop on the focus keys retired, `ALT+C` is the only hop key
 - [ ] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
 - [ ] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
 - [ ] **Phase 5: Standalone Install** - A stranger clones the repo, installs, uses it, and removes it without residue
@@ -88,11 +88,13 @@ Plans:
   3. No code path holds a synthetic key-down open across a wait: killing any helper mid-run leaves nothing held, confirmed by `il-heldmods` reading clear afterwards. Modifiers are never re-pressed through `ydotool` — that mechanism is a closed decision.
   4. A Mac→Ryuk hop completes inside the same ~50ms budget as Ryuk→Mac, measured both warm and after the control master has lapsed, with no awaited journald confirmation anywhere in the hot path.
   5. The author runs the changed code as the daily driver for a full working session with no wedged keyboard, no wedged mouse, and no reach for `il-reset`.
-  6. After a Mac→Ryuk return leg the pointer is drawn without a jiggle, with the author watching it land (HOP-06). The `~2x`-after-accel behaviour of any ydotool nudge is measured, not assumed to cancel. Ruled out on evidence during Phase 1 and not to be re-investigated: Hyprland is not hiding the cursor (`cursor:inactive_timeout`, `hide_on_key_press`, `hide_on_touch`, `no_warps` all unset) and `no_hardware_cursors` is not implicated, since real motion restores the cursor.
+  6. [x] After a Mac→Ryuk return leg the pointer is drawn without a jiggle, with the author watching it land (HOP-06). The `~2x`-after-accel behaviour of any ydotool nudge is measured, not assumed to cancel. Ruled out on evidence during Phase 1 and not to be re-investigated: Hyprland is not hiding the cursor (`cursor:inactive_timeout`, `hide_on_key_press`, `hide_on_touch`, `no_warps` all unset) and `no_hardware_cursors` is not implicated, since real motion restores the cursor.
 
 **Plans**: TBD
 
-### Phase 3: Focus Chain Precision
+### Phase 3: Focus Chain Precision — DROPPED
+
+> Retired 2026-09-26 by the author's decision: `ALT+C` is the only hop key on both machines. Edge-hop on the focus keys cost more than it gave — fiddly edge detection, and `ALT+H` firing two handlers per press. `il-focus-jump` / `il-focus-jump-mac` backed up to `~/.local/share/ilhop-retired/`, AeroSpace `alt-l` restored to plain focus. Kept below for the record only.
 
 **Goal**: `ALT+H` moves focus left like the compositor does, and hops only when the focused window is genuinely leftmost.
 **Depends on**: Phase 2
@@ -109,7 +111,7 @@ Plans:
 ### Phase 03.1: Window-Centre Landing (INSERTED)
 
 **Goal**: The pointer lands at the centre of the window nearest the edge it crossed, and that window takes focus — not at the centre of the screen, which on a two-window Mac puts the cursor in the gap between them.
-**Depends on**: Phase 3
+**Depends on**: Phase 2 (was Phase 3, dropped)
 **Requirements**: HOP-05
 **Success Criteria** (what must be TRUE):
 
@@ -132,7 +134,7 @@ document landing behaviour this phase changes.
 ### Phase 4: The ilhop Surface
 
 **Goal**: Every command answers to `ilhop`, the diagnostics and the panic button work under that name, and the author's daily driver never breaks during the change.
-**Depends on**: Phase 3
+**Depends on**: Phase 3.1
 **Requirements**: PKG-04, DIAG-01, DIAG-02
 **Success Criteria** (what must be TRUE):
 
@@ -140,7 +142,7 @@ document landing behaviour this phase changes.
   2. `ilhop doctor` runs the full check suite and reports pass/fail per check; `ilhop doctor --test` additionally drives a live round trip and reports its outcome.
   3. `ilhop reset` recovers wedged input in one command, including when the primary keyboard is unresponsive and the command is run over ssh from a second machine — it issues unconditional releases rather than releasing only what it believes is held.
   4. Firing `ilhop reset` while a hop is in flight cannot interleave with it: the single-flight lock holds across the reset, proven by a scripted race with no human involved.
-  5. After the rename the author presses both binds at the keyboard and the hop behaves exactly as it did in Phase 3 — same landing, same latency, no new compositor call sites outside the one place they are isolated.
+  5. After the rename the author presses the hop bind on both machines and the hop behaves exactly as it did in Phase 3.1 — same landing, same latency, no new compositor call sites outside the one place they are isolated.
 
 **Plans**: TBD
 
@@ -170,8 +172,6 @@ Every v1 requirement maps to exactly one phase. No orphans, no duplicates.
 | HOP-03 | Phase 1 | Pointer lands dead centre |
 | HOP-05 | Phase 3.1 | Lands in the window nearest the crossed edge, which takes focus |
 | HOP-04 | Phase 2 | Return leg inside the ~50ms budget |
-| FOCUS-01 | Phase 3 | `ALT+H` edge detection is correct |
-| FOCUS-02 | Phase 3 | `ALT+H` feels as instant as plain focus |
 | DIAG-01 | Phase 4 | `ilhop doctor` and `--test` |
 | DIAG-02 | Phase 4 | `ilhop reset`, lock-safe |
 | PKG-01 | Phase 5 | Installs from a standalone repo |
@@ -179,7 +179,7 @@ Every v1 requirement maps to exactly one phase. No orphans, no duplicates.
 | PKG-03 | Phase 5 | README a stranger can follow |
 | PKG-04 | Phase 4 | `il-*` → `ilhop` rename, old names live |
 
-**Coverage: 13/13 v1 requirements mapped.**
+**Coverage: 12/12 active v1 requirements mapped** (HOP-06 added 2026-09-11; FOCUS-01/02 dropped 2026-09-26).
 
 ## Verification Gates
 

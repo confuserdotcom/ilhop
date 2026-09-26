@@ -6,8 +6,7 @@
 
 `ilhop` is a keyboard-driven screen-hop layer for [input-leap](https://github.com/input-leap/input-leap)
 on Wayland. One chord moves the pointer and keyboard focus between a Linux box
-and a Mac, in both directions, and the window-focus keys hop automatically when
-you run out of windows in that direction. It exists because input-leap's own
+and a Mac, in both directions. It exists because input-leap's own
 keyboard screen-switching does not work on Wayland at all.
 
 Today it is ~457 lines of shell and C living loose in `~/.local/bin/il-*` on one
