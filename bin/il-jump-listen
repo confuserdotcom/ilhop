@@ -5,6 +5,9 @@
 # A fresh ssh per press cost ~80ms before il-jump even started: ~55ms Mac ssh
 # spawn + mux, ~18ms for fish reading config.fish here (measured 2026-09-26).
 #
+# `aim <x>` is il-jump-mac, just after a hop request, reporting where on the
+# Mac the next hop there should land (HOP-05); il-jump reads it from $MCACHE.
+#
 # Only known directions are accepted: this is reachable by anything that can
 # write to the Mac-side socket.
 
@@ -14,8 +17,11 @@ set -u
 # queued behind a connect that is still in progress.
 echo ready
 
-while read -r d; do
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+while read -r d x; do
     case "$d" in
         right|toggle) "$HOME/.local/bin/il-jump" "$d" </dev/null ;;
+        aim) case "$x" in ''|*[!0-9]*) ;; *) printf '%s\n' "$x" > "$RUN/il-mac-aim" ;; esac ;;
     esac
 done

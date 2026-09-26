@@ -29,9 +29,8 @@
 #    safe, and - the point - it is the same landing spot no matter where the
 #    pointer started. That is what lets the recentre be one fixed nudge rather
 #    than a guess.
-#  - Recentring the Mac is ONE nudge of about a quarter of its width (ydotool
-#    deltas land at roughly 2x after acceleration; measured 430 -> 859 on a
-#    1710-wide screen). It must be a single move; several small ones build up
+#  - Recentring the Mac is ONE nudge of half the target x (ydotool deltas land
+#    at 2x after acceleration; measured 430 -> 859, see centre_mac). It must be a single move; several small ones build up
 #    acceleration and shoot past the right edge, bouncing control back here.
 #  - Recentring Nastralis uses the compositor, which is exact and free. Safe
 #    because on the server it is the portal that watches the edge barrier, not
@@ -46,7 +45,8 @@ RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE="$RUN/il-side"          # written by il-side-watch.service
 LOCK="$RUN/il-jump.lock"
 WCACHE="$RUN/il-mac-width"
-CCACHE="$RUN/il-ryuk-centre"  # "x y" of the focused monitor's centre, refreshed off the hot path
+CCACHE="$RUN/il-ryuk-aim"     # "x y [address]" where a hop here lands, refreshed off the hot path
+MCACHE="$RUN/il-mac-aim"      # x on the Mac to land at; il-jump-mac sends it as you leave the Mac
 YSOCK="$RUN/.ydotool_socket"
 DBGLOG="$RUN/ilhop-debug.log" # ILHOP_DEBUG-gated refusal log (D-11, D-12)
 DBGARM="$RUN/ilhop-debug.on"  # file present = debug on, without exporting the var
@@ -67,6 +67,20 @@ RETRY="$RUN/il-jump.retry"    # last-refusal marker: "$dir $tsms" (D-17, 01-06 d
 #    noticing nothing happened and pressing again sits comfortably inside it.
 RETRY_MIN_MS=200
 RETRY_MAX_MS=5000
+
+# Where a hop onto Nastralis lands (HOP-05): the centre of the window nearest
+# the left edge (the one the Mac hands over at) on the focused monitor's
+# workspace - leftmost first, then the one nearest the monitor's vertical
+# middle - plus its address so it can take focus. With no window, the monitor
+# centre. Input: hyprctl's monitors and clients JSON, slurped. Output: "x y [address]".
+AIM_JQ='(.[0] | map(select(.focused))[0] // .[0]) as $m
+    | ($m.y + ($m.height / $m.scale) / 2) as $cy
+    | [.[1][] | select(.workspace.id == $m.activeWorkspace.id and .mapped and (.hidden | not))]
+    | if length == 0 then "\(($m.x + ($m.width / $m.scale) / 2) | floor) \($cy | floor)"
+      else min_by([.at[0], ((.at[1] + .size[1] / 2) - $cy | fabs)])
+      | "\((.at[0] + .size[0] / 2) | floor) \((.at[1] + .size[1] / 2) | floor) \(.address)" end'
+# Test seam for il-repro --aim: run just the pick above on JSON from stdin.
+[ -n "${IL_JUMP_AIM_TEST:-}" ] && exec jq -rs "$AIM_JQ"
 
 note() { notify-send -a il-jump "il-jump" "$1" 2>/dev/null || true; }
 die()  { dbg "die: $1"; note "$1"; echo "il-jump: $1" >&2; exit 1; }
@@ -187,36 +201,48 @@ hypr() { # works even from an ssh session, which has no instance signature
         hyprctl "$@" 2>/dev/null
 }
 
-centre_geom() { # prints "x y" of the focused monitor's centre
-    hypr monitors -j | jq -r '(map(select(.focused))[0] // .[0]) | "\((.x + (.width / .scale) / 2) | floor) \((.y + (.height / .scale) / 2) | floor)"' 2>/dev/null
+aim_geom() { hypr -j --batch 'monitors; clients' | jq -rs "$AIM_JQ" 2>/dev/null; }
+
+# Reads the cached aim: asking hyprctl + jq live costs ~8ms of a ~48ms leg.
+# ponytail: the cache is as fresh as the last jump (the self-check below
+# refreshes it every time, including right after you leave for the Mac, and
+# the layout here does not change while you are over there). A window closed
+# in between lands the pointer on empty space and the focus is a no-op;
+# query live if that ever bites.
+read_aim() {
+    aim=""
+    [ -r "$CCACHE" ] && read -r aim < "$CCACHE"
+    case "${aim:-}" in
+        [0-9]*' '[0-9]*) : ;;
+        *) aim=$(aim_geom) ;;
+    esac
+    case "${aim:-}" in
+        [0-9]*' '[0-9]*) : ;;
+        *) aim="1280 720" ;;
+    esac
+    ax=${aim%% *}; rest=${aim#* }; ay=${rest%% *}; addr=""
+    [ "$rest" != "$ay" ] && addr=${rest#* }
 }
 
-# Reads the cached centre: asking hyprctl + jq was ~25% of the return leg.
-# ponytail: after a monitor change the cache is stale for one hop (the
-# self-check below refreshes it every jump); invalidate on hotplug if that
-# ever lands the pointer wrong.
 centre_nastralis() {
-    geom=""
-    [ -r "$CCACHE" ] && read -r geom < "$CCACHE"
-    case "${geom:-}" in
-        [0-9]*' '[0-9]*) : ;;
-        *) geom=$(centre_geom) ;;
-    esac
-    case "${geom:-}" in
-        [0-9]*' '[0-9]*) : ;;
-        *) geom="1280 720" ;;
-    esac
-    hypr dispatch "hl.dsp.cursor.move({ x = ${geom% *}, y = ${geom#* } })" >/dev/null
+    read_aim
+    hypr dispatch "hl.dsp.cursor.move({ x = $ax, y = $ay })" >/dev/null
 }
 
-# Arriving from the Mac, the warp above emits no pointer event, so no client
-# re-sets a cursor image and the pointer stays invisible until real motion
-# (HOP-06). One real +1 motion redraws it; it moves the pointer 0px after a
+# A genuine arrival: warp onto the aimed window and give it focus (follow_mouse
+# is 2 here, so the pointer alone would not). The warp emits no pointer event,
+# so no client re-sets a cursor image and the pointer stays invisible until
+# real motion (HOP-06): one real +1 motion redraws it and moves it 0px after a
 # warp (sub-pixel, measured), so it needs no -1 to cancel it.
 # Only for a genuine arrival: in the give-up rescue the Mac may still hold
 # capture, and real motion there goes to input-leap, not here.
 arrive_nastralis() {
-    centre_nastralis
+    read_aim
+    if [ -n "$addr" ]; then
+        hypr --batch "dispatch hl.dsp.focus({ window = \"address:$addr\" }) ; dispatch hl.dsp.cursor.move({ x = $ax, y = $ay })" >/dev/null
+    else
+        hypr dispatch "hl.dsp.cursor.move({ x = $ax, y = $ay })" >/dev/null
+    fi
     ydotool mousemove -- 1 0
 }
 
@@ -233,9 +259,18 @@ mac_width() { # cached; only ever asks the Mac on a cold cache
 }
 
 centre_mac() {
-    # ~a quarter of the width: ydotool deltas land at roughly 2x after accel and
-    # the pointer starts pinned against the Mac's left edge. ONE move only.
-    ydotool mousemove -- "$(( $(mac_width) / 4 ))" 0
+    # The pointer starts pinned against the Mac's left edge and a single
+    # ydotool delta lands at 2x after accel (measured 2026-09-26: 100->184,
+    # 180->345, 430->859, 550->1099), so half the target x lands on it. The
+    # target is the centre of the Mac window nearest this edge, which
+    # il-jump-mac measured and focused as you last left the Mac (HOP-05); with
+    # none known, the screen centre. ONE move only.
+    # ponytail: x only - y stays wherever the crossing put it; pinning y would
+    # sweep the Mac's hot corners. Fine for AeroSpace's full-height columns.
+    tx=""
+    [ -r "$MCACHE" ] && read -r tx < "$MCACHE"
+    case "${tx:-}" in ''|*[!0-9]*) tx=$(( $(mac_width) / 2 )) ;; esac
+    ydotool mousemove -- "$(( tx / 2 ))" 0
 }
 
 # ── go ───────────────────────────────────────────────────────────────────────
@@ -262,7 +297,7 @@ if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
 # ── detached self-check: did it actually land, and rescue it if not ──────────
 (
     exec 9>&-                        # do not hold the single-flight lock
-    g=$(centre_geom)                 # refresh the centre cache off the hot path
+    g=$(aim_geom)                    # refresh the aim cache off the hot path
     case "$g" in [0-9]*' '[0-9]*) printf '%s\n' "$g" > "$CCACHE.$$" && mv -f "$CCACHE.$$" "$CCACHE" ;; esac
     landed 12 && exit 0              # ~1.2s; the side file flips after ~450ms
 
