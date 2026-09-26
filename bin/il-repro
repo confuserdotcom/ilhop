@@ -798,6 +798,25 @@ mode_selfcheck_rescue() {
     printf '01-06-SUMMARY.md.\n'
 }
 
+# ── HOP-05: which window a hop onto Nastralis aims at ────────────────────────
+# Fixture JSON through il-jump's IL_JUMP_AIM_TEST seam - no hyprctl, no motion.
+mode_aim() {
+    head "il-repro --aim (HOP-05: the window nearest the left edge, else the monitor centre)"
+    mon='[{"x":0,"y":0,"width":2560,"height":1440,"scale":1,"focused":true,"activeWorkspace":{"id":1}}]'
+    win() { # $1=address $2=ws $3=x $4=y $5=w $6=h
+        printf '{"address":"%s","workspace":{"id":%s},"at":[%s,%s],"size":[%s,%s],"mapped":true,"hidden":false}' "$@"
+    }
+    aim_case() { # $1=label $2=monitors $3=clients $4=expected
+        got=$(printf '%s %s' "$2" "$3" | IL_JUMP_AIM_TEST=1 "$HOME/.local/bin/il-jump" 2>&1)
+        [ "$got" = "$4" ] && pass "aim[$1]: $got" || fail "aim[$1]: expected '$4', got '$got'"
+    }
+    aim_case "two side by side" "$mon" "[$(win 0xR 1 1280 0 1280 1440),$(win 0xL 1 0 0 1280 1440)]" "640 720 0xL"
+    aim_case "stacked left column" "$mon" "[$(win 0xT 1 0 0 1280 400),$(win 0xB 1 0 400 1280 1040),$(win 0xR 1 1280 0 1280 1440)]" "640 920 0xB"
+    aim_case "one window" "$mon" "[$(win 0xA 1 65 18 2477 1404)]" "1303 720 0xA"
+    aim_case "other workspace only" "$mon" "[$(win 0xO 2 0 0 1280 1440)]" "1280 720"
+    aim_case "scaled monitor, empty" '[{"x":0,"y":0,"width":2560,"height":1440,"scale":2,"focused":true,"activeWorkspace":{"id":1}}]' "[]" "640 360"
+}
+
 mode_all() {
     head "il-repro --all (--inject-noop + --stress + --watcher-gap + --cursor-crash-loop + --retry-forced + --watcher-parser + --selfcheck-rescue; --stress-live excluded)"
     mode_inject_noop
@@ -807,6 +826,7 @@ mode_all() {
     mode_retry_forced
     mode_watcher_parser
     mode_selfcheck_rescue
+    mode_aim
 }
 
 case "${1:---inject-noop}" in
@@ -836,6 +856,9 @@ case "${1:---inject-noop}" in
     --selfcheck-rescue)
         mode_selfcheck_rescue
         ;;
+    --aim)
+        mode_aim
+        ;;
     --arm)
         mode_arm
         ;;
@@ -850,7 +873,7 @@ case "${1:---inject-noop}" in
         mode_all
         ;;
     *)
-        echo "usage: il-repro [--inject-noop|--stress [--iterations N]|--stress-live [--iterations N]|--watcher-gap|--cursor-crash-loop|--retry-forced|--watcher-parser|--selfcheck-rescue|--arm|--disarm|--report [--lines N]|--all]" >&2
+        echo "usage: il-repro [--inject-noop|--stress [--iterations N]|--stress-live [--iterations N]|--watcher-gap|--cursor-crash-loop|--retry-forced|--watcher-parser|--selfcheck-rescue|--aim|--arm|--disarm|--report [--lines N]|--all]" >&2
         printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
         exit 2
         ;;

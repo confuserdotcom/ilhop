@@ -45,7 +45,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
 - [x] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
 - [-] ~~**Phase 3: Focus Chain Precision**~~ - DROPPED 2026-09-26: auto-hop on the focus keys retired, `ALT+C` is the only hop key
-- [ ] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
+- [x] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
 - [ ] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
 - [ ] **Phase 5: Standalone Install** - A stranger clones the repo, installs, uses it, and removes it without residue
 
@@ -120,6 +120,8 @@ Plans:
   3. With exactly one window open, the pointer lands at the centre of that window rather than the centre of the screen.
   4. With no windows open, the landing falls back to screen centre and nothing errors.
   5. The hop still completes inside the ~50ms budget in both directions with the geometry fetch included — measured, not assumed. If the Mac-side query cannot be made to fit, the geometry is resolved off the hot path and the criterion is met by the pointer's final resting place, never by an awaited round trip during the hop.
+
+**Plans**: done inline 2026-09-26, no plan files. All five criteria met; author confirmed at the keyboard. Geometry is resolved off the hot path on both sides (criterion 5): return leg 21-28ms. Phase COMPLETE.
 
 **Note on the (INSERTED) marker**: this phase was added mid-milestone via
 `/gsd-phase --insert`, which stamps every insertion `(INSERTED)`. It is planned

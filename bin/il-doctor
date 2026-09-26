@@ -134,8 +134,10 @@ ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'test -S ~/.local/state/il-hop.sock
 ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'pgrep -q -f input-leapc' 2>/dev/null \
     && pass "input-leap client running on the Mac" \
     || fail "input-leap client NOT running on the Mac   -> launchctl kickstart gui/\$(id -u)/com.input-leap.client"
-[ -s "$RUN/il-mac-width" ] && pass "Mac width cached: $(cat "$RUN/il-mac-width")px (recentre nudge $(( $(cat "$RUN/il-mac-width") / 4 )))" \
+[ -s "$RUN/il-mac-width" ] && pass "Mac width cached: $(cat "$RUN/il-mac-width")px" \
                            || warn "Mac width not cached yet - the first jump will fetch it"
+[ -s "$RUN/il-mac-aim" ] && pass "Mac landing aimed at x=$(cat "$RUN/il-mac-aim") (window nearest the edge)" \
+                         || warn "no Mac landing aim yet - hops land mid-screen until you next leave the Mac with ALT+C"
 
 if [ "${1:-}" = "--test" ]; then
     head "live round trip"

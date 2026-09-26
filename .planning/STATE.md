@@ -32,7 +32,7 @@ Plan: 7 of 7 executed
 Status: Re-verified 2026-09-18 — passed (6/6). CR-01 closed by 01-07.
 Last activity: 2026-09-18 — CR-01 gap verified closed in live code; phase records updated
 
-Next: Phase 03.1 (Window-Centre Landing, HOP-05). Phase 02 COMPLETE 2026-09-26 — HOP-06 and HOP-04 fixed and author-verified; HOP-01 closed as an upstream input-leap limitation (UPSTREAM-01). Phase 3 (focus chain) dropped.
+Next: Phase 04 (The ilhop Surface). Phase 03.1 COMPLETE 2026-09-26 — HOP-05 landed and author-verified. Phase 02 COMPLETE 2026-09-26 — HOP-06 and HOP-04 fixed and author-verified; HOP-01 closed as an upstream input-leap limitation (UPSTREAM-01). Phase 3 (focus chain) dropped.
 **The Mac is reachable** (ssh 0.120s over LAN mDNS via `Host mac`, up 10 days; Tailscale
 showing it offline is irrelevant — the hop path does not use `mac-ts`). An earlier note in
 this file claiming Phase 02 was "gated on the Mac being reachable" was wrong and is retracted.
