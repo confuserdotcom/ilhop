@@ -46,6 +46,8 @@
 #                                       frozen file never confirms, and
 #                                       asserts the pointer ends up local
 #                                       again near the computed screen centre
+#   il-repro --aim                    HOP-05 window pick, on fixture JSON
+#   il-repro --reset-race             DIAG-02: reset and a hop never interleave
 #   il-repro --arm                    creates the route-2 arm switch
 #   il-repro --disarm                 removes it
 #   il-repro --report [--lines N]     tails the debug log with a per-exit-
@@ -53,6 +55,7 @@
 #   il-repro --all                    --inject-noop + --stress + --watcher-gap
 #                                       + --cursor-crash-loop + --retry-forced
 #                                       + --watcher-parser + --selfcheck-rescue
+#                                       + --aim + --reset-race
 #
 # This script never simulates a keypress and never invokes il-jump through
 # the keybind - ydotool key events do not fire Hyprland keybinds at all
@@ -737,11 +740,12 @@ mode_selfcheck_rescue() {
         warn "the oracle reports input-leap's capture is not local (landed(nastralis) failed) - informational, not a fail: see 01-06-SUMMARY.md for why this signal is not cleanly attributable on a live, actively-used machine"
     fi
 
-    # Within tolerance of the computed screen centre - the same jq geometry
-    # read il-jump's own centre_nastralis() uses, so the target compared
-    # against is the real one, not a guess. $pos was captured immediately
-    # after the sleep above, before the oracle's own probe could perturb it.
-    geom=$(hypr monitors -j | jq -r '(map(select(.focused))[0] // .[0]) | "\((.x + (.width / .scale) / 2) | floor) \((.y + (.height / .scale) / 2) | floor)"' 2>/dev/null)
+    # Within tolerance of the aim point (HOP-05: the window nearest the left
+    # edge, else the monitor centre) - computed by il-jump's own pick through
+    # its IL_JUMP_AIM_TEST seam, so the target compared against is the real
+    # one, not a guess. $pos was captured immediately after the sleep above,
+    # before the oracle's own probe could perturb it.
+    geom=$(hypr -j --batch 'monitors; clients' | IL_JUMP_AIM_TEST=1 "$JUMP" 2>/dev/null | cut -d' ' -f1,2)
     case "${geom:-}" in
         [0-9]*' '[0-9]*)
             gx=${geom% *}; gy=${geom#* }
@@ -750,15 +754,15 @@ mode_selfcheck_rescue() {
                 ddx=$((px - gx)); [ "$ddx" -lt 0 ] && ddx=$((0 - ddx))
                 ddy=$((py - gy)); [ "$ddy" -lt 0 ] && ddy=$((0 - ddy))
                 if [ "$ddx" -le 50 ] && [ "$ddy" -le 50 ]; then
-                    pass "pointer within tolerance of the computed screen centre (target $gx,$gy actual $px,$py)"
+                    pass "pointer within tolerance of the aim point (target $gx,$gy actual $px,$py)"
                 else
-                    fail "pointer NOT within tolerance of the computed screen centre (target $gx,$gy actual $px,$py)"
+                    fail "pointer NOT within tolerance of the aim point (target $gx,$gy actual $px,$py)"
                 fi
             else
                 warn "could not read cursorpos - centre tolerance not checked"
             fi
             ;;
-        *) warn "could not compute the expected screen centre - tolerance not checked" ;;
+        *) warn "could not compute the aim point - tolerance not checked" ;;
     esac
 
     rescue_cleanup
@@ -817,6 +821,38 @@ mode_aim() {
     aim_case "scaled monitor, empty" '[{"x":0,"y":0,"width":2560,"height":1440,"scale":2,"focused":true,"activeWorkspace":{"id":1}}]' "[]" "640 360"
 }
 
+# ── DIAG-02: reset and a hop can never interleave ────────────────────────────
+# il-reset's IL_RESET_DRY seam takes the real lock and holds it, skipping the
+# service restarts. Both directions of the race: reset waits for a hop in
+# flight, and a hop fired during a reset is dropped without moving anything.
+mode_reset_race() {
+    head "il-repro --reset-race (DIAG-02: single-flight lock holds across reset)"
+    LOCK="$RUN/il-jump.lock"
+
+    # 1: a stand-in hop holds the lock for 600ms; reset must not get in first.
+    ( exec 9>"$LOCK"; flock 9; sleep 0.6 ) &
+    sleep 0.1; t0=$(date +%s%3N)
+    tl=$(IL_RESET_DRY=0 "$HOME/.local/bin/il-reset" | sed -n 's/.*locked at //p')
+    wait
+    if [ -n "$tl" ] && [ $((tl - t0)) -ge 400 ]; then
+        pass "reset waited $((tl - t0))ms for the in-flight hop's lock"
+    else
+        fail "reset took the lock after $((${tl:-0} - t0))ms while a hop held it"
+    fi
+
+    # 2: a hop fired while reset holds the lock is dropped, logged, and fast.
+    IL_RESET_DRY=1 "$HOME/.local/bin/il-reset" >/dev/null &
+    sleep 0.3
+    before=$(wc -l < "$DBGLOG" 2>/dev/null || echo 0)
+    t0=$(date +%s%3N); ILHOP_DEBUG=1 "$JUMP" toggle >/dev/null 2>&1; t1=$(date +%s%3N)
+    wait
+    if tail -n +"$((before + 1))" "$DBGLOG" 2>/dev/null | grep -q 'stale-lock'; then
+        pass "hop during reset was dropped by the lock ($((t1 - t0))ms, no dispatch)"
+    else
+        fail "hop during reset was NOT dropped - it ran alongside the reset"
+    fi
+}
+
 mode_all() {
     head "il-repro --all (--inject-noop + --stress + --watcher-gap + --cursor-crash-loop + --retry-forced + --watcher-parser + --selfcheck-rescue; --stress-live excluded)"
     mode_inject_noop
@@ -827,6 +863,7 @@ mode_all() {
     mode_watcher_parser
     mode_selfcheck_rescue
     mode_aim
+    mode_reset_race
 }
 
 case "${1:---inject-noop}" in
@@ -856,6 +893,9 @@ case "${1:---inject-noop}" in
     --selfcheck-rescue)
         mode_selfcheck_rescue
         ;;
+    --reset-race)
+        mode_reset_race
+        ;;
     --aim)
         mode_aim
         ;;
@@ -873,7 +913,7 @@ case "${1:---inject-noop}" in
         mode_all
         ;;
     *)
-        echo "usage: il-repro [--inject-noop|--stress [--iterations N]|--stress-live [--iterations N]|--watcher-gap|--cursor-crash-loop|--retry-forced|--watcher-parser|--selfcheck-rescue|--aim|--arm|--disarm|--report [--lines N]|--all]" >&2
+        echo "usage: il-repro [--inject-noop|--stress [--iterations N]|--stress-live [--iterations N]|--watcher-gap|--cursor-crash-loop|--retry-forced|--watcher-parser|--selfcheck-rescue|--aim|--reset-race|--arm|--disarm|--report [--lines N]|--all]" >&2
         printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
         exit 2
         ;;

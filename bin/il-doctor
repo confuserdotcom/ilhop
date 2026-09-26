@@ -102,7 +102,7 @@ echo "$binds" | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/d
 echo "$binds" | jq -e '[.[] | select((.key|ascii_downcase)=="h" and .modmask==8)] | length == 1' >/dev/null 2>&1 \
     && pass "ALT + H is plain focus-left (no edge-hop dispatcher)" \
     || fail "ALT + H carries extra dispatchers   -> check binds.lua for a stale il-focus-jump bind"
-for s in il-jump il-side-watch il-heldmods; do
+for s in ilhop il-jump il-side-watch il-heldmods; do
     [ -x "$HOME/.local/bin/$s" ] && pass "$s present and executable" || fail "$HOME/.local/bin/$s missing"
 done
 
