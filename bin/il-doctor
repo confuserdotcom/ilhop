@@ -84,8 +84,10 @@ else
     warn "no 'has connected' in the last 10 min - the Mac may be asleep or off"
 fi
 conf="$HOME/.config/InputLeap/server.conf"
-grep -qE '^[[:space:]]*left *= *[^[:space:]]' "$conf" 2>/dev/null \
-    && pass "server.conf: the Mac is the LEFT link" || fail "server.conf: no left link (ilhop assumes the Mac sits to the LEFT)"
+side="${ILHOP_MAC_SIDE:-left}"
+grep -qE "^[[:space:]]*$side *= *[^[:space:]]" "$conf" 2>/dev/null \
+    && pass "server.conf: the Mac is the $side link (ILHOP_MAC_SIDE)" \
+    || fail "server.conf: no $side link, but ILHOP_MAC_SIDE says the Mac sits $side   -> fix server.conf or ILHOP_MAC_SIDE in $CONF"
 grep -qE '^[[:space:]]*switchDelay' "$conf" 2>/dev/null \
     && warn "server.conf still sets switchDelay - that reintroduces the laggy edge" \
     || pass "server.conf: no switchDelay (edges cross instantly)"
@@ -130,6 +132,11 @@ else
     echo "$binds" | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/dev/null 2>&1 \
         && pass "ALT + C bound (jump toggle)" || fail "ALT + C not bound   -> re-run install.sh, or bind it to ilhop toggle"
 fi
+wm=$(. "$HOME/.local/bin/il-wm" 2>&1 && echo "$ILHOP_WM")
+case "$wm" in
+    hyprland-lua|hyprland) pass "window-manager adapter: $wm" ;;
+    *) fail "window-manager adapter: ${wm:-$HOME/.local/bin/il-wm missing}   -> set ILHOP_WM in $CONF, or re-run install.sh" ;;
+esac
 for s in ilhop il-jump il-side-watch il-heldmods; do
     [ -x "$HOME/.local/bin/$s" ] && pass "$s present and executable" || fail "$HOME/.local/bin/$s missing"
 done

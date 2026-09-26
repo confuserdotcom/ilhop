@@ -1,0 +1,69 @@
+# Sourced, not run: the Mac window-manager adapter (PORT-01), used by
+# il-jump-mac and il-aim-mac.
+#
+# ILHOP_MAC_WM (in ~/.config/ilhop/config) picks the backend:
+#   aerospace   the window nearest Linux on the focused workspace, focused
+#   yabai       the same, on the current space
+#   none        plain macOS: the frontmost window, which already has focus
+# Unset: aerospace if installed, else yabai if installed, else none.
+# ILHOP_MAC_SIDE: which side of the Linux screen the Mac sits on (left/right).
+#
+#   mac_pick      "<window-id|-> <x>": the landing window and its centre x
+#                 ("-" = no window: the screen centre)
+#   mac_focus ID  give that window focus
+
+# launchd starts the hotkey helper with a bare PATH; the WMs live in Homebrew.
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+
+if [ -z "${ILHOP_MAC_WM:-}" ]; then
+    if command -v aerospace >/dev/null 2>&1; then ILHOP_MAC_WM=aerospace
+    elif command -v yabai >/dev/null 2>&1; then ILHOP_MAC_WM=yabai
+    else ILHOP_MAC_WM=none; fi
+fi
+
+# argv: side, then either window ids, one JSON array of yabai windows, or
+# "front". Returns "<id|-> <centre x>" for the window nearest the edge that
+# faces Linux: the right edge when the Mac is on the left, else the left edge.
+# CGWindowList gives the frames (no permission needed for bounds); AeroSpace
+# and yabai window ids are CGWindowIDs, and CGWindowList lists front to back.
+PICK_JS='function run(argv) {
+    ObjC.import("CoreGraphics"); ObjC.import("AppKit");
+    const side = argv[0];
+    let ids = argv.slice(1);
+    if (ids.length && ids[0].startsWith("["))
+        ids = JSON.parse(ids[0]).filter(w => w["is-visible"] && !w["is-minimized"]).map(w => String(w.id));
+    let ws = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(
+        $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0)));
+    if (ids[0] === "front") {
+        ws = ws.filter(w => w.kCGWindowLayer === 0 && w.kCGWindowBounds.Width > 100).slice(0, 1);
+    } else {
+        const want = new Set(ids.map(Number));
+        ws = ws.filter(w => want.has(w.kCGWindowNumber));
+    }
+    if (!ws.length) return "- " + Math.round($.NSScreen.mainScreen.frame.size.width / 2);
+    const b = w => w.kCGWindowBounds;
+    const near = side === "right" ? w => -b(w).X : w => b(w).X + b(w).Width;
+    const w = ws.reduce((a, c) => near(c) > near(a) ? c : a);
+    return w.kCGWindowNumber + " " + Math.round(b(w).X + b(w).Width / 2);
+}'
+
+pick() { /usr/bin/osascript -l JavaScript -e "$PICK_JS" "${ILHOP_MAC_SIDE:-left}" "$@" 2>/dev/null; }
+
+case "$ILHOP_MAC_WM" in
+    aerospace)
+        mac_pick() { pick $(aerospace list-windows --workspace focused --format '%{window-id}'); }
+        mac_focus() { aerospace focus --window-id "$1"; }
+        ;;
+    yabai)
+        mac_pick() { pick "$(yabai -m query --windows --space)"; }
+        mac_focus() { yabai -m window --focus "$1"; }
+        ;;
+    none)
+        mac_pick() { pick front; }
+        mac_focus() { :; }   # the frontmost window already has focus
+        ;;
+    *)
+        echo "ilhop: unknown ILHOP_MAC_WM '$ILHOP_MAC_WM' (aerospace, yabai, none)" >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,60 @@
+# Sourced, not run: the window-manager adapter (PORT-01). Every call ilhop
+# makes into the Linux compositor goes through the wm_* functions below, so
+# supporting another compositor means adding a backend here, nowhere else.
+#
+# ILHOP_WM (in ~/.config/ilhop/config) picks the backend:
+#   hyprland-lua   Hyprland running hyprland.lua (hl.dsp.* dispatchers)
+#   hyprland       Hyprland running hyprland.conf (classic dispatchers)
+# Unset: Hyprland, in Lua mode if hyprland.lua exists (that is the file
+# Hyprland itself prefers).
+#
+#   wm_aim                 "x y [window]": where a hop onto this machine lands
+#   wm_warp X Y            put the pointer at X Y (logical, global coordinates)
+#   wm_focus_warp WIN X Y  focus WIN, then put the pointer at X Y
+
+hypr() { # works even from an ssh session, which has no instance signature
+    HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr" 2>/dev/null | command head -n1)}" \
+        hyprctl "$@" 2>/dev/null
+}
+
+if [ -z "${ILHOP_WM:-}" ]; then
+    if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hyprland.lua" ]; then
+        ILHOP_WM=hyprland-lua
+    else
+        ILHOP_WM=hyprland
+    fi
+fi
+
+# Where a hop onto this machine lands (HOP-05): the centre of the window
+# nearest the edge the Mac hands over at ($mac: left or right, from
+# ILHOP_MAC_SIDE) on the focused monitor's workspace - nearest that edge
+# first, then the one nearest the monitor's vertical middle - plus its
+# address so it can take focus. With no window, the monitor centre. Input:
+# hyprctl's monitors and clients JSON, slurped; both Hyprland modes print the
+# same JSON.
+AIM_JQ='(.[0] | map(select(.focused))[0] // .[0]) as $m
+    | ($m.y + ($m.height / $m.scale) / 2) as $cy
+    | [.[1][] | select(.workspace.id == $m.activeWorkspace.id and .mapped and (.hidden | not))]
+    | if length == 0 then "\(($m.x + ($m.width / $m.scale) / 2) | floor) \($cy | floor)"
+      else min_by([if $mac == "right" then -(.at[0] + .size[0]) else .at[0] end,
+                   ((.at[1] + .size[1] / 2) - $cy | fabs)])
+      | "\((.at[0] + .size[0] / 2) | floor) \((.at[1] + .size[1] / 2) | floor) \(.address)" end'
+
+wm_aim() { hypr -j --batch 'monitors; clients' | jq -rs --arg mac "${ILHOP_MAC_SIDE:-left}" "$AIM_JQ" 2>/dev/null; }
+
+case "$ILHOP_WM" in
+    hyprland-lua)
+        wm_warp() { hypr dispatch "hl.dsp.cursor.move({ x = $1, y = $2 })" >/dev/null; }
+        wm_focus_warp() {
+            hypr --batch "dispatch hl.dsp.focus({ window = \"address:$1\" }) ; dispatch hl.dsp.cursor.move({ x = $2, y = $3 })" >/dev/null
+        }
+        ;;
+    hyprland)
+        wm_warp() { hypr dispatch movecursor "$1" "$2" >/dev/null; }
+        wm_focus_warp() { hypr --batch "dispatch focuswindow address:$1 ; dispatch movecursor $2 $3" >/dev/null; }
+        ;;
+    *)
+        echo "ilhop: unknown ILHOP_WM '$ILHOP_WM' (hyprland-lua, hyprland) - check ~/.config/ilhop/config" >&2
+        exit 2
+        ;;
+esac

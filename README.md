@@ -11,16 +11,30 @@ work at all; ilhop replaces it with a hop that takes ~25ms.
 
 ## What it runs on
 
-This is the one tested combination. Anything else is untested and probably
-will not work without changes.
-
 | | Linux (input-leap **server**) | Mac (input-leap **client**) |
 |---|---|---|
-| Window manager | Hyprland with Lua dispatch (`hl.dsp.*`, the Ryoku fork) | [AeroSpace](https://github.com/nikitabobko/AeroSpace) |
+| Window manager | Hyprland, with either `hyprland.lua` or `hyprland.conf` | [AeroSpace](https://github.com/nikitabobko/AeroSpace), [yabai](https://github.com/koekeishiya/yabai), or none |
 | input-leap | `input-leaps --use-ei` as a systemd user service named `input-leap-server`, at `--debug INFO` | `input-leapc` connected to it |
-| Tools | `ydotool`, `jq`, `ssh`, `flock`, a C compiler, systemd | `nc`, `osascript` (both ship with macOS) |
+| Tools | `ydotool`, `jq`, `ssh`, `flock`, a C compiler, systemd | `nc`, `osascript` (ship with macOS); without AeroSpace, the Command Line Tools (`xcode-select --install`) |
 
-The Mac must be the **left** neighbour of the Linux screen in `server.conf`:
+Tested daily: Hyprland in Lua mode with an AeroSpace Mac on the left. Classic
+Hyprland, yabai, a Mac without a window manager and a Mac on the right are
+built and tested piece by piece, but not yet in daily use. Please report what
+breaks.
+
+What the Mac does in each mode:
+
+- **AeroSpace / yabai:** a hop lands on the Mac window nearest the Linux
+  screen, and that window gets focus.
+- **None:** a hop lands on the window that already has focus. ALT+C comes
+  from a small helper (`il-hotkey-mac`) that the installer builds; it uses the
+  macOS hotkey API, so it needs no Accessibility permission.
+
+Sway and other wlroots compositors cannot run the input-leap server at all:
+their portal has no InputCapture support.
+
+The Mac sits on the left or the right of the Linux screen, as `server.conf`
+says; the installer reads it from there. For a Mac on the left:
 
 ```
 section: links
@@ -62,11 +76,13 @@ The installer:
 
 - **Linux:** copies the commands to `~/.local/bin`, builds `il-heldmods`,
   installs and starts `il-side-watch.service` (and `ydotoold.service` if you
-  do not already have one), and binds ALT+C in `~/.config/hypr/user.lua`
-  unless ALT+C is already bound.
-- **Mac:** copies three scripts to `~/.local/bin`, loads the `ilhop.hop-pipe`
-  launchd agent, and adds `alt-c` and `on-focus-changed` to `aerospace.toml`
-  (it leaves either alone if you already set it, and tells you what to add).
+  do not already have one), and binds ALT+C in your Hyprland config
+  (`user.lua` or `hyprland.lua`, or `hyprland.conf`) unless it is already bound.
+- **Mac:** copies the scripts to `~/.local/bin` and loads the `ilhop.hop-pipe`
+  launchd agent. With AeroSpace it adds `alt-c` and `on-focus-changed` to
+  `aerospace.toml`; otherwise it builds `il-hotkey-mac` and loads the
+  `ilhop.hotkey` agent, and with yabai adds a focus signal to `yabairc`. It
+  leaves anything you already set alone, and tells you what to add.
 - **Both:** writes the settings to `~/.config/ilhop/config`. Edit it later
   if an alias or the screen name changes.
 
@@ -77,7 +93,8 @@ The installer:
 | Command | What it does |
 |---|---|
 | `ilhop` / `ilhop toggle` | Hop to the other machine (what ALT+C runs on Linux) |
-| `ilhop left` / `ilhop right` | Hop to the Mac / back to Linux |
+| `ilhop mac` / `ilhop linux` | Hop to the Mac / back to Linux |
+| `ilhop left` / `ilhop right` | Hop that way |
 | `ilhop doctor` | Check every moving part, with the fix for each failure |
 | `ilhop doctor --test` | Also do a real round trip and time it |
 | `ilhop reset` | Panic button: release every modifier, restart the input services, bring the pointer home |
@@ -117,8 +134,9 @@ own with an `ilhop` comment.
   have focus.
 - **The landing spot is worked out when you last left a machine.** If a window
   moves or closes while you are on the other side, the next hop can land on
-  empty space. On the Mac, AeroSpace refreshes it on every focus change.
+  empty space. On the Mac, AeroSpace and yabai refresh it on every focus
+  change; without a window manager it is refreshed when you press ALT+C there.
 - **Right after sleep or a network change**, the Mac's fast connection takes
   a second or two to come back. ALT+C on the Mac still works in that window;
   it just goes over a slower fresh ssh.
-- One monitor per machine, and the Mac always on the left.
+- One monitor per machine.

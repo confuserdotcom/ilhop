@@ -34,10 +34,12 @@ one sentence is not.
 - **Tech stack**: POSIX shell plus one small C helper; no runtime beyond
   `ydotool`, `systemd --user`, and ssh — It has to install on a stranger's box
   without dragging a language runtime along.
-- **Compositor coupling**: The Ryoku Hyprland fork replaces `hyprctl dispatch`
-  with a Lua API (`hl.dsp.*`); plain `hyprctl dispatch movecursor` fails with a
-  parse error — Every compositor call is fork-specific today. Isolating them is
-  what makes v2's adapters possible, so v1 should not scatter new ones.
+- **Compositor coupling**: Every call into the Linux compositor goes through the
+  adapter in `bin/il-wm` (`wm_aim`, `wm_warp`, `wm_focus_warp`); never call
+  `hyprctl dispatch` anywhere else. Official Hyprland (0.5x) has two dispatch
+  syntaxes chosen by the config file it runs: `hyprland.lua` means Lua
+  (`hl.dsp.*`; `movecursor` fails with a parse error), `hyprland.conf` means
+  the classic dispatchers. This is not a Ryoku fork. `ILHOP_WM` picks the backend.
 - **Log level**: `input-leap-server.service` must run `--debug INFO`, never
   `DEBUG` — At DEBUG it emits ~4487 journal lines/minute of motion events, and
   `il-side-watch` follows that journal.
