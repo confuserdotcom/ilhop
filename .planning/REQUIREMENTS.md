@@ -9,7 +9,7 @@ Requirements for the first packaged release. Each maps to exactly one roadmap ph
 
 ### Hop Correctness
 
-- [ ] **HOP-01**: The first chord pressed after a hop registers on the destination machine — no eaten keystroke, no modifier left latched in `CGEventSourceFlagsState`. The fix must not re-press modifiers through `ydotool` (that mechanism wedged real input on 2026-09-10 and is a closed decision).
+- [-] **HOP-01**: The first chord pressed after a hop registers on the destination machine — no eaten keystroke, no modifier left latched in `CGEventSourceFlagsState`. The fix must not re-press modifiers through `ydotool` (that mechanism wedged real input on 2026-09-10 and is a closed decision). **Closed 2026-09-26 as an upstream limitation, by the author's decision.** Reproduced at the keyboard: hold Alt, ALT+C to the Mac, keep holding, press 1 or Shift+H -> nothing until Alt is released and re-pressed. Cause: the modifier went down before input-leap's capture began, and input-leap's server ignores the compositor's modifier state (`EiScreen.cpp`: `case EI_EVENT_KEYBOARD_MODIFIERS: // FIXME`), so every forwarded key carries mask 0. Mac-side injection ruled out: the Mac client re-posts its own private modifier state on every modifier change. Workaround: release and re-press the modifier after a hop. Real fix tracked as UPSTREAM-01.
 - [x] **HOP-02**: The hop fires on every press of the bind — the intermittent "sometimes doesn't fire" report is reproduced, root-caused, and closed. Reproduction precedes any fix. Reopened 2026-09-11 by the Phase 1 verifier (`01-VERIFICATION.md`, gaps_found 5/6) because the phase's own `--cursor-file` reattach (commit `8408bcc`) could crash-loop silently and freeze `$STATE` forever. **Closed 2026-09-18**: `01-07` bounded that failure to exactly one `Restart=always` cycle (`il-side-watch:115-131`), made the diagnostic discoverable in the unit's own journal, and added a journal-history crash-loop check (`il-doctor:81-88`) plus a permanent regression gate (`il-repro --cursor-crash-loop`, folded into `--all`). Re-verified passed 6/6.
 - [x] **HOP-03**: The pointer lands dead centre of the destination screen on every hop, in both directions — never at an edge, never off-centre. **Closed 2026-09-11 as NOT A DEFECT, not as a repair** — measured in `.planning/phases/01-regression-recovery/01-HOP-03-FINDING.md` per ROADMAP Phase 1 criterion 4's own clause that recording the finding is how the criterion is met. Screen centre being the *wrong target* is HOP-05's problem, not this one's.
 - [ ] **HOP-05**: The pointer lands at the centre of the window nearest the edge it crossed, and that window takes keyboard focus on arrival. With exactly one window open it lands at that window's centre; with none, it falls back to screen centre. Screen centre is not the target — on a two-window Mac it puts the cursor in the gap between them. Raised during Phase 1 discussion (`.planning/phases/01-regression-recovery/01-CONTEXT.md` D-19/D-20); supersedes HOP-03's screen-centre target once it lands.
@@ -44,6 +44,10 @@ Deferred. Tracked, not roadmapped.
 - **VIS-01**: A lightweight indicator of which machine currently has focus. Trigger: a report of disorientation in practice — research found no well-loved tray-icon equivalent, so this waits for the pain.
 - **VIS-02**: Configurable cursor-placement policy (centre vs. restore last position per side). Trigger: the centre default proving wrong in practice; no competitor data favours either for a chord trigger.
 
+### Upstream
+
+- **UPSTREAM-01**: Patch input-leap's server to handle `EI_EVENT_KEYBOARD_MODIFIERS` (an empty `// FIXME` in `EiScreen.cpp`) or otherwise seed modifiers already held when capture starts, so a modifier held across a hop reaches the far side (the HOP-01 gap). First step: log whether Hyprland's portal sends that event at all; fallback is reading held keys from the kernel as `il-heldmods` does. Ship as a patched Arch package, offer upstream. Trigger: the release-and-re-press workaround becoming a real annoyance.
+
 ### Portability
 
 - **PORT-01**: Both-sides-pluggable adapters — other Wayland compositors, yabai/skhd.
@@ -73,7 +77,7 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOP-01 | Phase 2 | Pending |
+| HOP-01 | Phase 2 | Closed — upstream limitation (see UPSTREAM-01) |
 | HOP-02 | Phase 1 | Complete |
 | HOP-03 | Phase 1 | Complete |
 | HOP-04 | Phase 2 | Complete |
