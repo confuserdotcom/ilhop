@@ -43,7 +43,7 @@ keyboard can satisfy.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Regression Recovery** - Reproduce and close the two defects suspected of riding in on the `9d1f129` revert
-- [ ] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
+- [x] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
 - [-] ~~**Phase 3: Focus Chain Precision**~~ - DROPPED 2026-09-26: auto-hop on the focus keys retired, `ALT+C` is the only hop key
 - [ ] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
 - [ ] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
@@ -83,14 +83,14 @@ Plans:
 **Requirements**: HOP-01, HOP-04, HOP-06
 **Success Criteria** (what must be TRUE):
 
-  1. The author holds a modifier across a hop and the first chord on the destination machine registers — verified by a real AeroSpace workspace actually switching, for each of ALT, Shift, Ctrl, and Cmd in turn. A `CGEventSourceFlagsState` read showing zero is not accepted as proof of this criterion.
+  1. [-] NOT MET — accepted as an upstream limitation 2026-09-26 (HOP-01, UPSTREAM-01). The author holds a modifier across a hop and the first chord on the destination machine registers — verified by a real AeroSpace workspace actually switching, for each of ALT, Shift, Ctrl, and Cmd in turn. A `CGEventSourceFlagsState` read showing zero is not accepted as proof of this criterion.
   2. Before the fix is designed, the raw flags value is masked against the documented low-24-bit modifier masks and logged before and after known actions, so it is known whether `0x20000000` means "a modifier is held" at all — it matches no documented `CGEventFlags` constant, and if the real modifier bits read clear the fix belongs somewhere else entirely.
   3. No code path holds a synthetic key-down open across a wait: killing any helper mid-run leaves nothing held, confirmed by `il-heldmods` reading clear afterwards. Modifiers are never re-pressed through `ydotool` — that mechanism is a closed decision.
   4. [x] A Mac→Ryuk hop completes inside the same ~50ms budget as Ryuk→Mac, measured both warm and after the control master has lapsed, with no awaited journald confirmation anywhere in the hot path.
   5. The author runs the changed code as the daily driver for a full working session with no wedged keyboard, no wedged mouse, and no reach for `il-reset`.
   6. [x] After a Mac→Ryuk return leg the pointer is drawn without a jiggle, with the author watching it land (HOP-06). The `~2x`-after-accel behaviour of any ydotool nudge is measured, not assumed to cancel. Ruled out on evidence during Phase 1 and not to be re-investigated: Hyprland is not hiding the cursor (`cursor:inactive_timeout`, `hide_on_key_press`, `hide_on_touch`, `no_warps` all unset) and `no_hardware_cursors` is not implicated, since real motion restores the cursor.
 
-**Plans**: TBD
+**Plans**: none — done ad hoc on 2026-09-26 (HOP-06, HOP-04 fixed and author-verified; HOP-01 closed as upstream). Phase COMPLETE.
 
 ### Phase 3: Focus Chain Precision — DROPPED
 

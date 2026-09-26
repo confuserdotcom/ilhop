@@ -174,6 +174,7 @@ single most important piece of context in this document.
 | Optimistic recentre + detached self-check, not awaited confirmation | Awaiting journald cost ~450ms and made the hop feel laggy; the detached check covers the failure case | ✓ Good |
 | Never re-press held modifiers through ydotool | Wedged the real keyboard and mouse on 2026-09-10; reverted to `92f64bc` | ✓ Good — and the "first chord eaten" bug still needs a different fix |
 | One hop key (`ALT+C`); no auto-hop on the focus keys | Edge detection was fiddly and doubled up `ALT+H`; one chord both ways is simpler to use and to develop | ✓ Good — decided 2026-09-26, dropped Phase 3 |
+| Accept HOP-01 (modifier held across a hop is not carried) as upstream | input-leap's server ignores the compositor's modifier state (`EI_EVENT_KEYBOARD_MODIFIERS: // FIXME`); ydotool re-press is banned and Mac-side injection is overwritten by the client. Patch tracked as UPSTREAM-01 | — Accepted 2026-09-26; workaround: re-press the modifier |
 | Bugs before packaging | A working daily driver sooner, and packaging a buggy thing means packaging it twice | — Pending |
 | v1 = Hyprland + AeroSpace only; adapters in v2 | Adapters for untestable hardware contradict the verification constraint | — Pending |
 | Repo first, upstream to Ryoku second | Prove it installs standalone before inheriting Ryoku's release cycle | — Pending |
