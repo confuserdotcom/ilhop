@@ -1,0 +1,179 @@
+#!/bin/sh
+# Health check for the two-machine input-leap setup.
+#
+#   il-doctor           inspect everything, change nothing
+#   il-doctor --test    also do a real round trip (Nastralis -> Mac -> back)
+#
+# Written so that when the screen hop misbehaves there is one thing to run
+# instead of remembering where all the moving parts live.
+
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+ok=0; bad=0
+pass() { printf '  \033[32mok\033[0m    %s\n' "$1"; ok=$((ok+1)); }
+fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; bad=$((bad+1)); }
+warn() { printf '  \033[33mwarn\033[0m  %s\n' "$1"; }
+head() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+hypr() { # works even from an ssh session, which has no instance signature
+    # copied verbatim from il-jump:140-143 (D-16) - the new live-round-trip
+    # landing check needs this to resolve HYPRLAND_INSTANCE_SIGNATURE under ssh.
+    # `command head` (not bare `head`), because this file's own head() reporting
+    # function (defined above) shadows the coreutils binary - the exact bug
+    # 01-02-SUMMARY.md documented finding and fixing in il-cursortrace's copy
+    # of this same wrapper; fixed here before it is ever exercised.
+    HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | command head -n1)}" \
+        hyprctl "$@" 2>/dev/null
+}
+
+head "pointer injection (ydotool)"
+if systemctl --user is-active --quiet ydotoold.service; then
+    pass "ydotoold.service running"
+else
+    fail "ydotoold.service NOT running   -> systemctl --user start ydotoold"
+fi
+if ydotool mousemove -- 0 0 >/dev/null 2>&1; then
+    pass "ydotool can talk to the daemon"
+else
+    fail "ydotool cannot reach the daemon (stale socket?)   -> systemctl --user restart ydotoold"
+fi
+id -nG 2>/dev/null | grep -qw input \
+    && pass "user is in the 'input' group (needed for /dev/uinput)" \
+    || fail "user is NOT in the 'input' group   -> sudo usermod -aG input $USER, then log out"
+
+head "input-leap server"
+if systemctl --user is-active --quiet input-leap-server.service; then
+    pass "input-leap-server.service running"
+else
+    fail "input-leap-server.service NOT running   -> ils-restart"
+fi
+lvl=$(grep -o -- '--debug [A-Z]*' "$HOME/.config/systemd/user/input-leap-server.service" 2>/dev/null | awk '{print $2}')
+[ "$lvl" = INFO ] && pass "log level INFO (side tracking needs it, and DEBUG floods the journal)" \
+                  || warn "log level is ${lvl:-?}; INFO is what il-side-watch expects"
+if journalctl --user -u input-leap-server.service --since "10 minutes ago" --no-pager 2>/dev/null \
+       | grep -q 'has connected'; then
+    pass "the Mac client has connected recently"
+else
+    warn "no 'has connected' in the last 10 min - the Mac may be asleep or off"
+fi
+conf="$HOME/.config/InputLeap/server.conf"
+grep -q 'left *= *Macbook-Air.local' "$conf" 2>/dev/null \
+    && pass "server.conf: Mac is the LEFT link" || fail "server.conf: left link missing"
+grep -qE '^[[:space:]]*switchDelay' "$conf" 2>/dev/null \
+    && warn "server.conf still sets switchDelay - that reintroduces the laggy edge" \
+    || pass "server.conf: no switchDelay (edges cross instantly)"
+
+head "side tracking"
+if systemctl --user is-active --quiet il-side-watch.service; then
+    pass "il-side-watch.service running"
+else
+    fail "il-side-watch.service NOT running (toggle loses its sense of direction)"
+fi
+# systemctl is-active alone cannot tell a healthy watcher from one
+# crash-looping under Restart=always/RestartSec=3 -- CR-01 measured it
+# reporting `active` on roughly 1 in 10 polls mid-loop. systemd itself logs
+# "Scheduled restart job, restart counter is at N" to the unit's own journal
+# on every Restart=always cycle (confirmed live this session, systemd 261,
+# ~3s cadence at RestartSec=3), so two or more of those lines inside a
+# trailing 10-second window is not one legitimate restart -- it is a loop.
+# History-based: adds no sleep, and self-expires as the window slides, with
+# no state to reset. journalctl producing nothing (unit never restarted, or
+# unreadable) defaults the count to 0 rather than warning or crashing.
+restarts=$(journalctl --user -u il-side-watch.service --since "-10s" --no-pager 2>/dev/null \
+               | grep -c 'Scheduled restart job' 2>/dev/null)
+case "$restarts" in
+    ''|*[!0-9]*) restarts=0 ;;
+esac
+if [ "$restarts" -ge 2 ]; then
+    fail "il-side-watch.service is crash-looping ($restarts restarts in the last 10s)   -> journalctl --user -u il-side-watch.service --since '-30s'"
+else
+    pass "il-side-watch.service restart history looks healthy ($restarts restart(s) in the last 10s)"
+fi
+if [ -s "$RUN/il-side" ]; then
+    pass "pointer is currently on: $(cat "$RUN/il-side")"
+else
+    fail "no side file at $RUN/il-side"
+fi
+
+head "keybinds on this machine"
+binds=$(hyprctl binds -j 2>/dev/null)
+echo "$binds" | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/dev/null 2>&1 \
+    && pass "ALT + C bound (jump toggle)" || fail "ALT + C not bound   -> ryoku materialize && hyprctl reload"
+# Edge-hop on the focus keys was retired 2026-09-26: ALT + C is the only hop key.
+echo "$binds" | jq -e '[.[] | select((.key|ascii_downcase)=="h" and .modmask==8)] | length == 1' >/dev/null 2>&1 \
+    && pass "ALT + H is plain focus-left (no edge-hop dispatcher)" \
+    || fail "ALT + H carries extra dispatchers   -> check binds.lua for a stale il-focus-jump bind"
+for s in il-jump il-side-watch il-heldmods; do
+    [ -x "$HOME/.local/bin/$s" ] && pass "$s present and executable" || fail "$HOME/.local/bin/$s missing"
+done
+
+if latched=$("$HOME/.local/bin/il-heldmods" 2>/dev/null | tr '\n' ' '); then
+    [ -z "$latched" ] \
+        && pass "no modifier latched down" \
+        || warn "modifier keycode(s) reported held: $latched (fine if you are holding one)"
+else
+    fail "il-heldmods cannot read /dev/input (input group? rebuild: gcc -O2 -o ~/.local/bin/il-heldmods ~/.local/src/il-heldmods.c)"
+fi
+
+head "the Mac"
+if t=$( { TIMEFORMAT=%R; time ssh -o BatchMode=yes -o ConnectTimeout=5 mac true; } 2>&1 ); then
+    pass "ssh to the Mac works (${t}s; >1s means the control master went cold)"
+else
+    fail "cannot ssh to the Mac   -> check tailscale / that it is awake"
+fi
+if ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'test -x ~/.local/bin/il-jump-mac' 2>/dev/null; then
+    pass "il-jump-mac present on the Mac"
+else
+    fail "il-jump-mac missing on the Mac"
+fi
+macbinds=$(ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'grep -cE "^alt-c = .*il-jump-mac" ~/.config/aerospace/aerospace.toml' 2>/dev/null)
+[ "${macbinds:-0}" -ge 1 ] && pass "aerospace binds alt-c to il-jump-mac" \
+                           || fail "aerospace alt-c does not run il-jump-mac   -> check ~/.config/aerospace/aerospace.toml"
+ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'test -S ~/.local/state/il-hop.sock' 2>/dev/null \
+    && pass "il-hop-pipe session up on the Mac (fast Mac->Ryuk leg)" \
+    || fail "il-hop-pipe down: Mac ALT+C falls back to slow ssh   -> launchctl kickstart -k gui/\$(id -u)/com.nastralis.il-hop-pipe (on the Mac)"
+ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'pgrep -q -f input-leapc' 2>/dev/null \
+    && pass "input-leap client running on the Mac" \
+    || fail "input-leap client NOT running on the Mac   -> launchctl kickstart gui/\$(id -u)/com.input-leap.client"
+[ -s "$RUN/il-mac-width" ] && pass "Mac width cached: $(cat "$RUN/il-mac-width")px (recentre nudge $(( $(cat "$RUN/il-mac-width") / 4 )))" \
+                           || warn "Mac width not cached yet - the first jump will fetch it"
+
+if [ "${1:-}" = "--test" ]; then
+    head "live round trip"
+    # The verdict below no longer comes from $RUN/il-side (D-16's circularity -
+    # a stale-but-unchanged cache could make this pass while the hop did
+    # nothing). It comes from il-cursortrace --landed, the local-freeze oracle
+    # 01-A1-RESULT.md measured and licensed. The cache is still reported, at
+    # warn level, as what it currently believes - never as the verdict.
+    ORACLE="$HOME/.local/bin/il-cursortrace"
+    report_cache() { # $1 = expected side, for the agree/disagree note
+        c=$(cat "$RUN/il-side" 2>/dev/null)
+        pos=$(hypr cursorpos 2>/dev/null)   # routes this check through the hypr() wrapper (D-16 key-link)
+        if [ "$c" = "$1" ]; then
+            warn "cache believes: ${c:-unset} (agrees with the oracle) - hyprctl cursorpos: ${pos:-unavailable}"
+        else
+            warn "cache believes: ${c:-unset} (disagrees with the oracle's $1 - the exact condition this phase exists to catch) - hyprctl cursorpos: ${pos:-unavailable}"
+        fi
+    }
+
+    start=$(cat "$RUN/il-side" 2>/dev/null)
+    [ "$start" = mac ] && { "$HOME/.local/bin/il-jump" right >/dev/null 2>&1; sleep 2; }
+
+    t0=$(date +%s%3N); "$HOME/.local/bin/il-jump" toggle >/dev/null 2>&1; t1=$(date +%s%3N); sleep 2
+    if "$ORACLE" --landed mac >/dev/null 2>&1; then
+        pass "hop to the Mac: $((t1-t0))ms"
+    else
+        fail "hop to the Mac did not land"
+    fi
+    report_cache mac
+
+    t0=$(date +%s%3N); "$HOME/.local/bin/il-jump" toggle >/dev/null 2>&1; t1=$(date +%s%3N); sleep 2
+    if "$ORACLE" --landed nastralis >/dev/null 2>&1; then
+        pass "hop back: $((t1-t0))ms"
+    else
+        fail "hop back did not land"
+    fi
+    report_cache nastralis
+fi
+
+printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
+[ "$bad" -eq 0 ] || exit 1

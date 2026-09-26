@@ -1,0 +1,21 @@
+#!/bin/sh
+# Runs il-jump for hop requests read one per line from stdin. The Mac's
+# il-hop-pipe agent keeps a single ssh session open to this, so a Mac-side
+# ALT+C is one line down a live channel instead of a fresh ssh (HOP-04).
+# A fresh ssh per press cost ~80ms before il-jump even started: ~55ms Mac ssh
+# spawn + mux, ~18ms for fish reading config.fish here (measured 2026-09-26).
+#
+# Only known directions are accepted: this is reachable by anything that can
+# write to the Mac-side socket.
+
+set -u
+
+# The Mac agent only opens its socket once it sees this, so presses are never
+# queued behind a connect that is still in progress.
+echo ready
+
+while read -r d; do
+    case "$d" in
+        right|toggle) "$HOME/.local/bin/il-jump" "$d" </dev/null ;;
+    esac
+done
