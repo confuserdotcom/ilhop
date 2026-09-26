@@ -1,0 +1,150 @@
+From 2e826c5f31c001389d646365360ffa5721207c75 Mon Sep 17 00:00:00 2001
+From: nastralis <alaerattale001@gmail.com>
+Date: Sat, 26 Sep 2026 21:14:57 +0000
+Subject: [PATCH] ei: carry modifiers held at capture start over to the client
+
+Modifiers pressed before input capture begins never reach the server as
+EI key events, and compositors are not required to send their modifier
+state on activation (Hyprland only sends it on change). Holding Alt
+while crossing to a client and pressing 1 therefore sent a bare 1.
+
+When the primary screen leaves, rebuild the xkb state from the kernel's
+view of the modifier keys (EVIOCGKEY on /dev/input/event*). Without read
+access this only clears state left over from the previous capture.
+
+Also handle EI_EVENT_KEYBOARD_MODIFIERS instead of ignoring it, so
+latched and locked modifiers sent by the compositor are applied.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../ei_server_held_modifiers.bugfix           |  1 +
+ src/lib/platform/EiKeyState.cpp               | 56 +++++++++++++++++++
+ src/lib/platform/EiKeyState.h                 |  3 +
+ src/lib/platform/EiScreen.cpp                 | 10 +++-
+ 4 files changed, 68 insertions(+), 2 deletions(-)
+ create mode 100644 doc/newsfragments/ei_server_held_modifiers.bugfix
+
+diff --git a/doc/newsfragments/ei_server_held_modifiers.bugfix b/doc/newsfragments/ei_server_held_modifiers.bugfix
+new file mode 100644
+index 00000000..e427889f
+--- /dev/null
++++ b/doc/newsfragments/ei_server_held_modifiers.bugfix
+@@ -0,0 +1 @@
++Fix modifier keys held while crossing to a client from a Wayland (libei) server being dropped until pressed again.
+diff --git a/src/lib/platform/EiKeyState.cpp b/src/lib/platform/EiKeyState.cpp
+index e8f3e9e5..91f7ad66 100644
+--- a/src/lib/platform/EiKeyState.cpp
++++ b/src/lib/platform/EiKeyState.cpp
+@@ -22,6 +22,11 @@
+ #include <cstddef>
+ #include <algorithm>
+ #include <memory>
++#include <cstring>
++#include <dirent.h>
++#include <fcntl.h>
++#include <linux/input.h>
++#include <sys/ioctl.h>
+ #include <unistd.h>
+ 
+ #include <xkbcommon/xkbcommon.h>
+@@ -278,4 +283,55 @@ void EiKeyState::update_xkb_state(uint32_t keyval, bool is_pressed)
+     xkb_state_update_key(xkb_state_, keyval, is_pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
+ }
+ 
++void EiKeyState::update_xkb_mask(std::uint32_t depressed, std::uint32_t latched,
++                                 std::uint32_t locked, std::uint32_t group)
++{
++    LOG_DEBUG1("update_xkb_mask depressed=0x%x latched=0x%x locked=0x%x group=%d",
++               depressed, latched, locked, group);
++    xkb_state_update_mask(xkb_state_, depressed, latched, locked, 0, 0, group);
++}
++
++// Modifiers pressed before input capture began never reach us as EI key
++// events, and the compositor is not required to send its modifier state on
++// activation, so a modifier held across the screen edge would be lost. Rebuild
++// the xkb state from the kernel's view of the modifier keys instead. Needs read
++// access to /dev/input (the input group); without it this just clears state
++// left over from the previous capture.
++void EiKeyState::sync_held_modifiers()
++{
++    static const int mods[] = { KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT,
++                                KEY_LEFTALT, KEY_RIGHTALT, KEY_LEFTMETA, KEY_RIGHTMETA };
++    constexpr std::size_t bits = 8 * sizeof(unsigned long);
++    unsigned long held[(KEY_MAX + bits) / bits] = {};
++
++    if (DIR* dir = opendir("/dev/input")) {
++        while (dirent* e = readdir(dir)) {
++            if (strncmp(e->d_name, "event", 5) != 0)
++                continue;
++            int fd = openat(dirfd(dir), e->d_name, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
++            if (fd < 0)
++                continue;
++            unsigned long keys[sizeof(held) / sizeof(held[0])] = {};
++            if (ioctl(fd, EVIOCGKEY(sizeof(keys)), keys) >= 0)
++                for (std::size_t i = 0; i < sizeof(held) / sizeof(held[0]); i++)
++                    held[i] |= keys[i];
++            close(fd);
++        }
++        closedir(dir);
++    }
++
++    auto locked = xkb_state_serialize_mods(xkb_state_, XKB_STATE_MODS_LOCKED);
++    auto group = xkb_state_serialize_layout(xkb_state_, XKB_STATE_LAYOUT_EFFECTIVE);
++    xkb_state_unref(xkb_state_);
++    xkb_state_ = xkb_state_new(xkb_keymap_);
++    xkb_state_update_mask(xkb_state_, 0, 0, locked, 0, 0, group);
++
++    for (int key : mods) {
++        if ((held[key / bits] >> (key % bits)) & 1) {
++            LOG_DEBUG("modifier key %d held at capture start", key);
++            xkb_state_update_key(xkb_state_, key + 8, XKB_KEY_DOWN);
++        }
++    }
++}
++
+ } // namespace inputleap
+diff --git a/src/lib/platform/EiKeyState.h b/src/lib/platform/EiKeyState.h
+index 0a01e123..c24110b4 100644
+--- a/src/lib/platform/EiKeyState.h
++++ b/src/lib/platform/EiKeyState.h
+@@ -42,6 +42,9 @@ public:
+     void pollPressedKeys(KeyButtonSet& pressedKeys) const override;
+     KeyID map_key_from_keyval(std::uint32_t keyval) const;
+     void update_xkb_state(std::uint32_t keyval, bool is_pressed);
++    void update_xkb_mask(std::uint32_t depressed, std::uint32_t latched,
++                         std::uint32_t locked, std::uint32_t group);
++    void sync_held_modifiers();
+ 
+ protected:
+     // KeyState overrides
+diff --git a/src/lib/platform/EiScreen.cpp b/src/lib/platform/EiScreen.cpp
+index 51ff40ce..45017bb3 100644
+--- a/src/lib/platform/EiScreen.cpp
++++ b/src/lib/platform/EiScreen.cpp
+@@ -359,7 +359,10 @@ bool EiScreen::canLeave() {
+ 
+ void EiScreen::leave()
+ {
+-    if (!is_primary_) {
++    if (is_primary_) {
++        // Input is about to be captured: pick up modifiers already held.
++        key_state_->sync_held_modifiers();
++    } else {
+         if (ei_pointer_) {
+             ei_device_stop_emulating(ei_pointer_);
+         }
+@@ -810,7 +813,10 @@ void EiScreen::handle_system_event(const Event& sysevent)
+                 }
+                 break;
+             case EI_EVENT_KEYBOARD_MODIFIERS:
+-                // FIXME
++                key_state_->update_xkb_mask(ei_event_keyboard_get_xkb_mods_depressed(event),
++                                            ei_event_keyboard_get_xkb_mods_latched(event),
++                                            ei_event_keyboard_get_xkb_mods_locked(event),
++                                            ei_event_keyboard_get_xkb_group(event));
+                 break;
+ 
+             // events below are for a receiver context (barriers)
+-- 
+2.55.0
+
