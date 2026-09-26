@@ -13,6 +13,11 @@
 #   INFO: switch from "Macbook-Air.local" to "Nastralis" at 1,464
 #   INFO: jump from "Macbook-Air.local" to "Nastralis" at -1,-1
 
+# Per-machine settings (ilhop config, written by install.sh); defaults match
+# the original two machines.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+[ -r "$CONF" ] && . "$CONF"
+SCREEN="${ILHOP_SCREEN:-$(uname -n)}"   # this machine's input-leap screen name (--name)
 STATE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/il-side"
 
 # Start optimistic: this machine is the input-leap *server*, so if nothing has
@@ -35,7 +40,7 @@ handle_line() {
             dest=${line#*\" to \"}      # -> Macbook-Air.local" at 1699,445
             dest=${dest%%\"*}           # -> Macbook-Air.local
             case "$dest" in
-                Nastralis) printf 'nastralis\n' > "$STATE" ;;
+                "$SCREEN") printf 'nastralis\n' > "$STATE" ;;
                 "")        echo "il-side-watch: unparsable destination, leaving \$STATE at its last known value - line: $line" >&2 ;;
                 *)         printf 'mac\n'       > "$STATE" ;;
             esac

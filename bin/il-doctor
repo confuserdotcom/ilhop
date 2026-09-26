@@ -7,6 +7,11 @@
 # Written so that when the screen hop misbehaves there is one thing to run
 # instead of remembering where all the moving parts live.
 
+# Per-machine settings (ilhop config, written by install.sh); defaults match
+# the original two machines.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+[ -r "$CONF" ] && . "$CONF"
+MAC_HOST="${ILHOP_MAC_HOST:-mac}"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 ok=0; bad=0
 pass() { printf '  \033[32mok\033[0m    %s\n' "$1"; ok=$((ok+1)); }
@@ -29,22 +34,40 @@ head "pointer injection (ydotool)"
 if systemctl --user is-active --quiet ydotoold.service; then
     pass "ydotoold.service running"
 else
-    fail "ydotoold.service NOT running   -> systemctl --user start ydotoold"
+    fail "ydotoold.service NOT running   -> systemctl --user start ydotoold (if it keeps dying, see the /dev/uinput check below)"
 fi
 if ydotool mousemove -- 0 0 >/dev/null 2>&1; then
     pass "ydotool can talk to the daemon"
 else
     fail "ydotool cannot reach the daemon (stale socket?)   -> systemctl --user restart ydotoold"
 fi
-id -nG 2>/dev/null | grep -qw input \
-    && pass "user is in the 'input' group (needed for /dev/uinput)" \
-    || fail "user is NOT in the 'input' group   -> sudo usermod -aG input $USER, then log out"
+# ydotoold (a user unit) writes /dev/uinput and il-heldmods reads
+# /dev/input/event*: name the exact reason either would fail (PKG-01 #2).
+if [ ! -e /dev/uinput ]; then
+    fail "/dev/uinput does not exist   -> sudo modprobe uinput; echo uinput | sudo tee /etc/modules-load.d/uinput.conf"
+elif [ -w /dev/uinput ] && [ -r /dev/uinput ]; then
+    pass "/dev/uinput is readable and writable"
+else
+    ug=$(stat -c %G /dev/uinput); um=$(stat -c %A /dev/uinput)
+    if id -nG | grep -qw "$ug"; then
+        fail "/dev/uinput is $um root:$ug - your group '$ug' cannot write it   -> echo 'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\", OPTIONS+=\"static_node=uinput\"' | sudo tee /etc/udev/rules.d/80-uinput.rules; sudo udevadm control --reload; sudo udevadm trigger"
+    elif getent group "$ug" | cut -d: -f4 | tr ',' '\n' | grep -qx "$USER"; then
+        fail "you were added to '$ug' but this session predates it   -> log out and back in"
+    else
+        fail "/dev/uinput belongs to group '$ug' and you are not in it   -> sudo usermod -aG $ug $USER, then log out and back in"
+    fi
+fi
+if id -nG | grep -qw input; then
+    pass "user is in the 'input' group (il-heldmods reads /dev/input)"
+else
+    fail "user is NOT in the 'input' group   -> sudo usermod -aG input $USER, then log out and back in"
+fi
 
 head "input-leap server"
 if systemctl --user is-active --quiet input-leap-server.service; then
     pass "input-leap-server.service running"
 else
-    fail "input-leap-server.service NOT running   -> ils-restart"
+    fail "input-leap-server.service NOT running   -> systemctl --user restart input-leap-server"
 fi
 lvl=$(grep -o -- '--debug [A-Z]*' "$HOME/.config/systemd/user/input-leap-server.service" 2>/dev/null | awk '{print $2}')
 [ "$lvl" = INFO ] && pass "log level INFO (side tracking needs it, and DEBUG floods the journal)" \
@@ -56,8 +79,8 @@ else
     warn "no 'has connected' in the last 10 min - the Mac may be asleep or off"
 fi
 conf="$HOME/.config/InputLeap/server.conf"
-grep -q 'left *= *Macbook-Air.local' "$conf" 2>/dev/null \
-    && pass "server.conf: Mac is the LEFT link" || fail "server.conf: left link missing"
+grep -qE '^[[:space:]]*left *= *[^[:space:]]' "$conf" 2>/dev/null \
+    && pass "server.conf: the Mac is the LEFT link" || fail "server.conf: no left link (ilhop assumes the Mac sits to the LEFT)"
 grep -qE '^[[:space:]]*switchDelay' "$conf" 2>/dev/null \
     && warn "server.conf still sets switchDelay - that reintroduces the laggy edge" \
     || pass "server.conf: no switchDelay (edges cross instantly)"
@@ -95,13 +118,13 @@ else
 fi
 
 head "keybinds on this machine"
-binds=$(hyprctl binds -j 2>/dev/null)
-echo "$binds" | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/dev/null 2>&1 \
-    && pass "ALT + C bound (jump toggle)" || fail "ALT + C not bound   -> ryoku materialize && hyprctl reload"
-# Edge-hop on the focus keys was retired 2026-09-26: ALT + C is the only hop key.
-echo "$binds" | jq -e '[.[] | select((.key|ascii_downcase)=="h" and .modmask==8)] | length == 1' >/dev/null 2>&1 \
-    && pass "ALT + H is plain focus-left (no edge-hop dispatcher)" \
-    || fail "ALT + H carries extra dispatchers   -> check binds.lua for a stale il-focus-jump bind"
+binds=$(hypr binds -j)
+if [ -z "$binds" ]; then
+    fail "cannot reach Hyprland (not running in this session?) - ALT + C not checked"
+else
+    echo "$binds" | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/dev/null 2>&1 \
+        && pass "ALT + C bound (jump toggle)" || fail "ALT + C not bound   -> re-run install.sh, or bind it to ilhop toggle"
+fi
 for s in ilhop il-jump il-side-watch il-heldmods; do
     [ -x "$HOME/.local/bin/$s" ] && pass "$s present and executable" || fail "$HOME/.local/bin/$s missing"
 done
@@ -115,23 +138,23 @@ else
 fi
 
 head "the Mac"
-if t=$( { TIMEFORMAT=%R; time ssh -o BatchMode=yes -o ConnectTimeout=5 mac true; } 2>&1 ); then
+if t=$( { TIMEFORMAT=%R; time ssh -o BatchMode=yes -o ConnectTimeout=5 "$MAC_HOST" true; } 2>&1 ); then
     pass "ssh to the Mac works (${t}s; >1s means the control master went cold)"
 else
-    fail "cannot ssh to the Mac   -> check tailscale / that it is awake"
+    fail "cannot ssh to the Mac as '$MAC_HOST' without a password   -> check ILHOP_MAC_HOST in ~/.config/ilhop/config, your ssh keys, and that the Mac is awake"
 fi
-if ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'test -x ~/.local/bin/il-jump-mac' 2>/dev/null; then
+if ssh -o BatchMode=yes -o ConnectTimeout=5 "$MAC_HOST" 'test -x ~/.local/bin/il-jump-mac' 2>/dev/null; then
     pass "il-jump-mac present on the Mac"
 else
     fail "il-jump-mac missing on the Mac"
 fi
-macbinds=$(ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'grep -cE "^alt-c = .*il-jump-mac" ~/.config/aerospace/aerospace.toml' 2>/dev/null)
+macbinds=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "$MAC_HOST" 'grep -cE "^alt-c = .*il-jump-mac" ~/.config/aerospace/aerospace.toml' 2>/dev/null)
 [ "${macbinds:-0}" -ge 1 ] && pass "aerospace binds alt-c to il-jump-mac" \
                            || fail "aerospace alt-c does not run il-jump-mac   -> check ~/.config/aerospace/aerospace.toml"
-ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'test -S ~/.local/state/il-hop.sock' 2>/dev/null \
+ssh -o BatchMode=yes -o ConnectTimeout=5 "$MAC_HOST" 'test -S ~/.local/state/il-hop.sock' 2>/dev/null \
     && pass "il-hop-pipe session up on the Mac (fast Mac->Ryuk leg)" \
-    || fail "il-hop-pipe down: Mac ALT+C falls back to slow ssh   -> launchctl kickstart -k gui/\$(id -u)/com.nastralis.il-hop-pipe (on the Mac)"
-ssh -o BatchMode=yes -o ConnectTimeout=5 mac 'pgrep -q -f input-leapc' 2>/dev/null \
+    || fail "il-hop-pipe down: Mac ALT+C falls back to slow ssh   -> launchctl kickstart -k gui/\$(id -u)/ilhop.hop-pipe (on the Mac)"
+ssh -o BatchMode=yes -o ConnectTimeout=5 "$MAC_HOST" 'pgrep -q -f input-leapc' 2>/dev/null \
     && pass "input-leap client running on the Mac" \
     || fail "input-leap client NOT running on the Mac   -> launchctl kickstart gui/\$(id -u)/com.input-leap.client"
 [ -s "$RUN/il-mac-width" ] && pass "Mac width cached: $(cat "$RUN/il-mac-width")px" \

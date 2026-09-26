@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# Unconditional "go to Ryuk" from the Mac - the mirror of SUPER+C on Ryuk.
+# Bound to alt-c in aerospace.toml.
+#
+# NOTE it does NOT fake anything locally: input-leap only reacts to synthetic
+# pointer motion on the SERVER, so this asks Ryuk to run il-jump right, which
+# walks the shared cursor off the Mac's right edge and then recentres on Ryuk.
+# Physical SUPER+C can't be used here: server.conf swaps ctrl/super on the Mac
+# screen, so it arrives as Ctrl+C and would shadow terminal interrupt.
+#
+# Fast path: one line into the il-hop-pipe agent's live ssh session (~10ms,
+# HOP-04). If the agent is down, nc fails at once and this falls back to a
+# fresh ssh (~80ms warm, ~1.6s cold).
+
+# Per-machine settings (ilhop config, written by install.sh).
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+[ -r "$CONF" ] && . "$CONF"
+LINUX_HOST="${ILHOP_LINUX_HOST:-ryuk}"   # ssh alias for the Linux machine
+SOCK="$HOME/.local/state/il-hop.sock"
+send() { printf '%s\n' "$1" | /usr/bin/nc -U "$SOCK" 2>/dev/null; }
+
+send right || exec ssh -o BatchMode=yes -o ConnectTimeout=6 "$LINUX_HOST" "~/.local/bin/il-jump right"
+
+# The hop is already on its way; the rest is off its hot path (HOP-05). Pick
+# the window nearest the right edge (the one Ryuk hands back at) on this
+# workspace, focus it now so it has focus when you come back, and tell Ryuk
+# its centre x so the next hop here lands on it. No window: screen centre.
+# CGWindowList gives the frames (no permission needed for bounds); AeroSpace
+# window ids are CGWindowIDs, and its list drops the windows it parks
+# off-screen for other workspaces.
+# ponytail: stale if the layout changes while you are on Ryuk; the landing
+# then misses by that much and the focus stays on the old pick.
+set -- $(/usr/bin/osascript -l JavaScript -e '
+function run(ids) {
+    ObjC.import("CoreGraphics"); ObjC.import("AppKit");
+    const want = new Set(ids.map(Number));
+    const ws = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(
+        $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0)))
+        .filter(w => want.has(w.kCGWindowNumber));
+    if (!ws.length) return "- " + Math.round($.NSScreen.mainScreen.frame.size.width / 2);
+    const r = w => w.kCGWindowBounds.X + w.kCGWindowBounds.Width;
+    const w = ws.reduce((a, b) => r(b) > r(a) ? b : a);
+    return w.kCGWindowNumber + " " + Math.round(w.kCGWindowBounds.X + w.kCGWindowBounds.Width / 2);
+}' $(aerospace list-windows --workspace focused --format '%{window-id}') 2>/dev/null)
+[ -n "${2:-}" ] || exit 0
+[ "$1" = - ] || aerospace focus --window-id "$1"
+send "aim $2"
