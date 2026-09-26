@@ -1,0 +1,131 @@
+#!/bin/sh
+# Follow input-leap's log and keep a one-word file saying which machine
+# currently owns the pointer: "nastralis" or "mac".
+#
+# Everything else (il-jump's toggle direction, its did-the-jump-land check,
+# il-doctor) reads that file, so it has to be cheap and always current. It is
+# why input-leap-server.service runs at --debug INFO: at DEBUG the unit emits
+# ~75 lines/second of motion events and following it would burn real CPU on a
+# 2-core Broadwell. The switch lines we care about are INFO.
+#
+# Lines we match, verbatim from input-leap:
+#   INFO: switch from "Nastralis" to "Macbook-Air.local" at 1699,445
+#   INFO: switch from "Macbook-Air.local" to "Nastralis" at 1,464
+#   INFO: jump from "Macbook-Air.local" to "Nastralis" at -1,-1
+
+STATE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/il-side"
+
+# Start optimistic: this machine is the input-leap *server*, so if nothing has
+# switched yet the pointer is here. Any real switch corrects it immediately.
+[ -s "$STATE" ] || printf 'nastralis\n' > "$STATE"
+
+# One line in, at most one $STATE write out. Pulled into its own function so
+# a harness can source this file with IL_SIDE_WATCH_TEST set and call
+# handle_line() directly against a synthetic string - no journalctl, no
+# systemd, no real transition anywhere near it (01-06 plan, D-17 option B/D).
+handle_line() {
+    line=$1
+    case "$line" in
+        # "jump from" is forceLeaveClient()'s line - a different call site
+        # than switchScreen()'s ordinary "switch from" line, but the same
+        # '" to "' shape, so one pattern with an alternation matches both
+        # (RESEARCH Q1/Q2 #2; 01-ROOTCAUSE.md's second named mechanism: this
+        # shape was never matched at all before this phase).
+        *'switch from "'*'" to "'*|*'jump from "'*'" to "'*)
+            dest=${line#*\" to \"}      # -> Macbook-Air.local" at 1699,445
+            dest=${dest%%\"*}           # -> Macbook-Air.local
+            case "$dest" in
+                Nastralis) printf 'nastralis\n' > "$STATE" ;;
+                "")        echo "il-side-watch: unparsable destination, leaving \$STATE at its last known value - line: $line" >&2 ;;
+                *)         printf 'mac\n'       > "$STATE" ;;
+            esac
+            ;;
+        # A client (re)connecting means the server is holding the pointer again.
+        *'has connected'*|*'has disconnected'*)
+            printf 'nastralis\n' > "$STATE"
+            ;;
+    esac
+}
+
+# Test seam: a harness sources this file with IL_SIDE_WATCH_TEST set to get
+# handle_line() defined without ever starting the real journalctl follow
+# below. Only ever true when deliberately sourced this way - the real
+# ExecStart invocation never sets it, so this is a no-op in production.
+[ -n "${IL_SIDE_WATCH_TEST:-}" ] && return 0 2>/dev/null
+
+# --cursor-file: if $CURSOR exists and holds a cursor, journalctl resumes
+# exactly after it instead of at zero backlog - closing the restart-reattach
+# gap (RESEARCH Q2 #1; 01-ROOTCAUSE.md's first named mechanism, confirmed
+# firing at least once with 2 real transitions lost). `-n 0` stays as the
+# very-first-run fallback, when $CURSOR does not exist yet. At exit -
+# including the SIGTERM systemd sends before a Restart=always respawn -
+# journalctl writes the cursor of the last entry it showed back to $CURSOR,
+# so the NEXT start resumes exactly where this one left off rather than
+# losing whatever happened during the gap. Verified this session (--cursor-
+# file's read-on-start/write-on-SIGTERM behaviour is systemd's own, not
+# hand-rolled here) - see 01-06-SUMMARY.md. Touches nothing on il-jump's hot
+# path: this file is the state file's only writer, and nothing here runs
+# while a hop is in flight.
+CURSOR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/il-side-watch.cursor"
+
+# CR-01 (01-REVIEW.md; independently reproduced by 01-VERIFICATION.md, and
+# again by 01-07's own --cursor-crash-loop mode against the code below
+# before this fix landed): journalctl's own documented hard-failure mode on
+# a malformed or unseekable $CURSOR ("Failed to seek to cursor: Invalid
+# argument", exit 1, zero lines of output) had no handling - $CURSOR was
+# never repaired, so under this unit's real Restart=always/RestartSec=3
+# config every restart read the same still-garbage cursor and failed the
+# same way, forever, with the one diagnostic line journalctl does print
+# discarded by an unconditional 2>/dev/null before it could ever reach this
+# unit's own journal. Fixed below: capture journalctl's own exit status via
+# a portable brace-group + side-file, not `set -o pipefail`/`PIPESTATUS` -
+# both of those DO work here (/bin/sh on this box is a symlink to bash
+# 5.3.15, verified live), so this is a portability-discipline choice, not a
+# necessity: this file declares #!/bin/sh and has no bashism today, and
+# must not gain one just because this particular /bin/sh happens to
+# tolerate it. On a nonzero exit, delete $CURSOR before the next
+# Restart=always cycle, so the next start cold-starts via the documented
+# -n 0 fallback instead of looping on the same unreadable cursor forever -
+# exactly one restart, not an unbounded series. journalctl's stderr is no
+# longer unconditionally discarded either, so the diagnostic now reaches
+# this unit's own journal directly. Confirmed live this session: with a
+# valid or absent cursor, `journalctl -f -n 0 --cursor-file=... --no-pager`
+# writes nothing to stderr at all, so this costs nothing under normal
+# operation.
+#
+# Self-heal window cost, stated not hidden: any transitions between the
+# failed attempt and the successful cold-start restart moments later
+# (bounded to roughly one RestartSec cycle, ~3s) are not replayed - the same
+# class of cost the pre-existing first-run -n 0 fallback already accepts,
+# reached through a different door, and self-correcting on the next real
+# transition exactly the way the first-run case already is.
+#
+# WR-01, explicit decision NOT to fix here: a well-formed but unresolvable
+# cursor (e.g. after ordinary journal rotation evicts the entry it points
+# at) does not hit this hard-fail path at all - it silently replays the
+# full retained backlog instead, converging to the correct final value
+# rather than freezing anything permanently, a materially different and
+# lower-severity failure shape than CR-01's permanent freeze. Deliberately
+# not addressed here: doing it well needs knowing this journal's actual
+# retention/vacuum policy (a research question, not a code tweak) and a
+# place to log a large unexpected replay when it fires, which does not
+# exist anywhere in this file today. Both fit Phase 4 (DIAG)'s remit -
+# structured health reporting - rather than this minimal-change
+# regression-repair gap-closure plan.
+CURSOR_RC="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/il-side-watch.cursor-rc"
+
+{ journalctl --user -u input-leap-server.service -f -n 0 --cursor-file="$CURSOR" --no-pager; printf '%s\n' "$?" > "$CURSOR_RC"; } |
+while IFS= read -r line; do
+    handle_line "$line"
+done
+
+rc=$(cat "$CURSOR_RC" 2>/dev/null)
+rm -f "$CURSOR_RC"
+case "$rc" in
+    ''|0) ;;  # clean exit - journalctl already wrote a valid cursor on its own; nothing to repair
+    *)
+        echo "il-side-watch: journalctl --cursor-file exited $rc (likely an unseekable or unreadable cursor at $CURSOR) - deleting it so the next restart cold-starts via -n 0 instead of repeating this failure forever" >&2
+        rm -f "$CURSOR"
+        ;;
+esac
+exit "${rc:-0}"

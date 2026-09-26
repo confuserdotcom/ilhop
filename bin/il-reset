@@ -1,0 +1,31 @@
+#!/bin/sh
+# Panic button for the two-machine setup: unstick everything and bring the
+# pointer home. Safe to run at any time, from anywhere.
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+echo "il-reset: stopping any in-flight jumps"
+for p in $(pgrep -f '\.local/bin/il-jump' 2>/dev/null); do [ "$p" = "$$" ] || kill "$p" 2>/dev/null; done
+rm -f "$RUN/il-jump.lock" "$RUN/il-jump.seq"
+
+echo "il-reset: releasing every modifier"
+for i in 1 2 3; do
+    ydotool key -d 0 125:0 126:0 29:0 97:0 56:0 100:0 42:0 54:0 58:0 127:0 2>/dev/null
+    sleep 0.05
+done
+
+echo "il-reset: resetting the virtual input device"
+systemctl --user restart ydotoold.service 2>/dev/null
+sleep 1
+
+echo "il-reset: restarting the input relay"
+systemctl --user restart input-leap-server.service 2>/dev/null
+systemctl --user restart il-side-watch.service 2>/dev/null
+sleep 3
+
+echo "il-reset: pulling the pointer back to this machine"
+i=0; while [ "$i" -lt 14 ]; do ydotool mousemove -- 800 0; i=$((i + 1)); done
+sleep 1
+HIS="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}"
+HYPRLAND_INSTANCE_SIGNATURE="$HIS" hyprctl dispatch "hl.dsp.cursor.move({ x = 1280, y = 720 })" >/dev/null 2>&1
+
+printf 'il-reset: done. pointer is on: %s\n' "$(cat "$RUN/il-side" 2>/dev/null || echo '?')"
+echo "il-reset: modifiers held: '$("$HOME/.local/bin/il-heldmods" 2>/dev/null | tr '\n' ' ')' (empty is good)"

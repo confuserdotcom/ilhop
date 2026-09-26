@@ -1,0 +1,260 @@
+#!/bin/sh
+# Teleport the pointer between Nastralis and the Mac over input-leap.
+#
+#   il-jump            same as `toggle`
+#   il-jump toggle     go to whichever machine does NOT currently have the pointer
+#   il-jump left       go to the Mac          (server.conf: Nastralis.left link)
+#   il-jump right      come back to Nastralis (server.conf: Mac.right link)
+#
+# HOW THE CROSSING WORKS
+# input-leap only switches screens when its own cursor - which it tracks from
+# relative motion, not from where the compositor's cursor actually is - runs off
+# a screen edge. So this fires a short burst of large relative ydotool moves in
+# the travel direction, then puts the pointer near the middle of whatever screen
+# it landed on. The whole thing is local and takes ~25ms.
+#
+# TUNING NOTES (all measured - do not "simplify" these away)
+#  - NO sleep between the steps. The old 10ms gaps only existed to satisfy
+#    server.conf's `switchDelay` dwell, which is gone; without them the crossing
+#    went from ~320ms to ~20ms.
+#  - It still needs several moves rather than one big one: a single huge delta
+#    gets swallowed by libinput pointer acceleration and never crosses.
+#  - The burst deliberately OVERSHOOTS so the pointer pins against the far edge
+#    of the destination. Neither machine has a link on that side, so pinning is
+#    safe, and - the point - it is the same landing spot no matter where the
+#    pointer started. That is what lets the recentre be one fixed nudge rather
+#    than a guess.
+#  - Recentring the Mac is ONE nudge of about a quarter of its width (ydotool
+#    deltas land at roughly 2x after acceleration; measured 430 -> 859 on a
+#    1710-wide screen). It must be a single move; several small ones build up
+#    acceleration and shoot past the right edge, bouncing control back here.
+#  - Recentring Nastralis uses the compositor, which is exact and free. Safe
+#    because on the server it is the portal that watches the edge barrier, not
+#    input-leap's own cursor, so warping does not desync anything.
+#  - `ydotool mousemove -a` (absolute) is broken on this stack; never use it.
+#  - `ydotool key` defaults to a 12ms gap PER EVENT, so the modifier flush needs
+#    `-d 0` or it alone costs ~104ms.
+
+set -u
+
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE="$RUN/il-side"          # written by il-side-watch.service
+LOCK="$RUN/il-jump.lock"
+WCACHE="$RUN/il-mac-width"
+YSOCK="$RUN/.ydotool_socket"
+DBGLOG="$RUN/ilhop-debug.log" # ILHOP_DEBUG-gated refusal log (D-11, D-12)
+DBGARM="$RUN/ilhop-debug.on"  # file present = debug on, without exporting the var
+DBGCAP=65536                  # bytes; $RUN is RAM-backed tmpfs, D-13 keeps this alive into Phase 4
+RETRY="$RUN/il-jump.retry"    # last-refusal marker: "$dir $tsms" (D-17, 01-06 decision checkpoint)
+# Window bounds for the double-press override below - both measured on this
+# machine, not guessed (01-ROOTCAUSE.md, 01-06-SUMMARY.md):
+#  - floor 200ms: a tight back-to-back loop of the SAME direction (il-repro
+#    --stress's own alternating pattern) costs 12.9-22.3ms between repeats,
+#    measured over 19 samples. The floor sits >9x above that, so a stress
+#    test hammering a GENUINELY correct refusal never trips the override -
+#    the guard's own warning (shoving again buries the pointer further
+#    off-screen) still holds for anything at that speed.
+#  - ceiling 5000ms: the smallest gap between two REAL same-direction
+#    dispatches in ~4h of organic ILHOP_DEBUG logging was 67514ms. The
+#    ceiling sits >13x below that - every real same-direction repeat this
+#    user has ever produced sits comfortably outside it, while a human
+#    noticing nothing happened and pressing again sits comfortably inside it.
+RETRY_MIN_MS=200
+RETRY_MAX_MS=5000
+
+note() { notify-send -a il-jump "il-jump" "$1" 2>/dev/null || true; }
+die()  { dbg "die: $1"; note "$1"; echo "il-jump: $1" >&2; exit 1; }
+
+# Off by default: unless ILHOP_DEBUG is set or the arm file exists, this is a
+# single `test` and nothing else - no fork, no syscall beyond the check.
+# ${ILHOP_DEBUG:-} so `set -u` cannot abort on it being unset. One printf per
+# line (POSIX write-atomicity up to PIPE_BUF under O_APPEND) so the
+# synchronous path and the detached self-check below can never interleave a
+# partial line; >> always, never > - truncating would erase another writer's
+# history.
+dbg() {
+    [ -n "${ILHOP_DEBUG:-}" ] || [ -e "$DBGARM" ] || return 0
+    printf '%s %s\n' "$(date +%Y-%m-%dT%H:%M:%S.%3N%z)" "$1" >> "$DBGLOG" 2>/dev/null
+}
+
+# Keeps the trailing half once the log exceeds DBGCAP. A concurrent appender
+# still holding the old inode across the rename may lose the handful of
+# lines it writes during that window - accepted cost of a rotation with no
+# lock, on a log that only exists to be read after the fact.
+dbg_rotate() {
+    [ -n "${ILHOP_DEBUG:-}" ] || [ -e "$DBGARM" ] || return 0
+    [ -f "$DBGLOG" ] || return 0
+    sz=$(wc -c < "$DBGLOG" 2>/dev/null); sz=${sz:-0}
+    [ "$sz" -gt "$DBGCAP" ] 2>/dev/null || return 0
+    tmp="$DBGLOG.tmp.$$"
+    tail -c "$((DBGCAP / 2))" "$DBGLOG" > "$tmp" 2>/dev/null && mv -f "$tmp" "$DBGLOG" 2>/dev/null
+}
+dbg_rotate
+
+# ── single-flight ────────────────────────────────────────────────────────────
+# A second press while a jump is still in flight is dropped rather than allowed
+# to interleave its motion with the first one.
+exec 9>"$LOCK" 2>/dev/null || true
+if command -v flock >/dev/null 2>&1; then
+    flock -n 9 || { dbg "stale-lock: another jump in flight, dropping this press"; exit 0; }
+fi
+
+# ── the uinput daemon has to be up or nothing moves at all ───────────────────
+# Probe by actually talking to it. Testing for the socket FILE is not enough:
+# stopping ydotoold leaves the socket behind, so `[ -S ... ]` still passes while
+# every move fails with "Connection refused".
+ydotool_ok() { ydotool mousemove -- 0 0 >/dev/null 2>&1; }
+if ! ydotool_ok; then
+    systemctl --user start ydotoold.service >/dev/null 2>&1
+    n=0
+    while ! ydotool_ok && [ "$n" -lt 30 ]; do sleep 0.05; n=$((n + 1)); done
+    ydotool_ok || die "ydotoold will not start, so the pointer cannot be moved"
+    # libinput and the capture portal need a beat to adopt the new virtual
+    # device; without this the first shove after a revival gets swallowed.
+    sleep 0.25
+fi
+
+# Reads into $CUR without a subshell - this sits in the hot path.
+read_side() {
+    CUR=unknown
+    [ -r "$STATE" ] && { read -r CUR < "$STATE" || CUR=unknown; }
+    [ -n "${CUR:-}" ] || CUR=unknown
+}
+
+# ── which way? ───────────────────────────────────────────────────────────────
+read_side
+case "${1:-toggle}" in
+    toggle) if [ "$CUR" = mac ]; then dir=right; else dir=left; fi ;;
+    left)   dir=left  ;;
+    right)  dir=right ;;
+    *) dbg "usage: bad-arg='${1:-}'"; echo "usage: il-jump [toggle|left|right]" >&2; exit 2 ;;
+esac
+if [ "$dir" = left ]; then step=-800; want=mac; else step=800; want=nastralis; fi
+
+# Already there. Happens when ALT+H fires at the edge while the pointer is
+# already on the Mac; shoving again would only bury it further off-screen -
+# UNLESS this is a same-direction press shortly after an identical refusal,
+# in which case the cached side is presumably wrong and this press forces
+# the hop through rather than repeating the silent no-op indefinitely
+# (D-17, ROOTCAUSE property 1: "a second press shortly after the first
+# forces the hop through"). Known, accepted cost: a genuinely correct
+# same-direction double-press inside the window also fires - see
+# RETRY_MIN_MS/RETRY_MAX_MS above for why this is rare enough to accept.
+if [ "$CUR" = "$want" ]; then
+    now_ms=$(date +%s%3N)
+    rdir=""; rts=""
+    [ -r "$RETRY" ] && read -r rdir rts < "$RETRY" 2>/dev/null
+    case "${rts:-}" in ''|*[!0-9]*) rts=0 ;; esac
+    delta=$((now_ms - rts))
+    if [ "$rdir" = "$dir" ] && [ "$delta" -ge "$RETRY_MIN_MS" ] && [ "$delta" -le "$RETRY_MAX_MS" ]; then
+        dbg "retry-forced: dir=$dir CUR=$CUR want=$want since_last_refusal=${delta}ms"
+        rm -f "$RETRY" 2>/dev/null
+        # fall through - do not exit; this press forces the normal dispatch
+        # path below to run exactly as it would for any other jump.
+    else
+        printf '%s %s\n' "$dir" "$now_ms" > "$RETRY" 2>/dev/null
+        dbg "already-on-side: dir=$dir CUR=$CUR want=$want"
+        exit 0
+    fi
+fi
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+shove() { # $1 = number of steps
+    n=0
+    while [ "$n" -lt "$1" ]; do ydotool mousemove -- "$step" 0; n=$((n + 1)); done
+}
+
+landed() { # $1 = how many 100ms ticks to wait for the side file to flip
+    n=0
+    while [ "$n" -lt "$1" ]; do
+        read_side
+        [ "$CUR" = "$want" ] && return 0
+        [ "$CUR" = unknown ] && return 0     # watcher down: cannot judge, assume ok
+        sleep 0.1
+        n=$((n + 1))
+    done
+    return 1
+}
+
+hypr() { # works even from an ssh session, which has no instance signature
+    HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}" \
+        hyprctl "$@" 2>/dev/null
+}
+
+centre_nastralis() {
+    geom=$(hypr monitors -j | jq -r '(map(select(.focused))[0] // .[0]) | "\((.x + (.width / .scale) / 2) | floor) \((.y + (.height / .scale) / 2) | floor)"' 2>/dev/null)
+    case "${geom:-}" in
+        [0-9]*' '[0-9]*) : ;;
+        *) geom="1280 720" ;;
+    esac
+    hypr dispatch "hl.dsp.cursor.move({ x = ${geom% *}, y = ${geom#* } })" >/dev/null
+}
+
+# Arriving from the Mac, the warp above emits no pointer event, so no client
+# re-sets a cursor image and the pointer stays invisible until real motion
+# (HOP-06). One real +1/-1 nudge redraws it; measured net drift 0-1px.
+# Only for a genuine arrival: in the give-up rescue the Mac may still hold
+# capture, and real motion there goes to input-leap, not here.
+arrive_nastralis() {
+    centre_nastralis
+    ydotool mousemove -- 1 0; ydotool mousemove -- -1 0
+}
+
+mac_width() { # cached; only ever asks the Mac on a cold cache
+    if [ -s "$WCACHE" ]; then cat "$WCACHE"; return; fi
+    w=$(ssh -o BatchMode=yes -o ConnectTimeout=3 mac \
+        'osascript -e "tell application \"Finder\" to get bounds of window of desktop"' 2>/dev/null \
+        | tr -d ' ' | cut -d, -f3)
+    case "${w:-}" in
+        ''|*[!0-9]*) w=1710 ;;                  # default; deliberately not cached
+        *) printf '%s\n' "$w" > "$WCACHE" ;;
+    esac
+    printf '%s\n' "$w"
+}
+
+centre_mac() {
+    # ~a quarter of the width: ydotool deltas land at roughly 2x after accel and
+    # the pointer starts pinned against the Mac's left edge. ONE move only.
+    ydotool mousemove -- "$(( $(mac_width) / 4 ))" 0
+}
+
+# ── go ───────────────────────────────────────────────────────────────────────
+# Every jump stamps this. The background check below only intervenes if it is
+# still the most recent one, so a follow-up press is never second-guessed.
+SEQ="$RUN/il-jump.seq"
+myseq="$$-$(date +%s%N)"
+printf '%s\n' "$myseq" > "$SEQ"
+
+dbg "dispatch: dir=$dir want=$want CUR=$CUR seq=$myseq"
+shove 10
+
+# Drop any modifier still held from the keybind so it cannot stick on the far
+# side. -d 0, or this alone costs ~104ms.
+ydotool key -d 0 125:0 126:0 29:0 97:0 56:0 100:0 42:0 54:0 2>/dev/null || true
+
+# Recentre optimistically: the crossing itself is ~20ms, while confirmation has
+# to come back through journald and takes a few hundred. Waiting for it here is
+# what made this feel laggy, so the check runs detached instead. If the crossing
+# did fail, the nudge only slides the pointer along this screen and the check
+# below puts it back.
+if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
+
+# ── detached self-check: did it actually land, and rescue it if not ──────────
+(
+    exec 9>&-                        # do not hold the single-flight lock
+    landed 12 && exit 0              # ~1.2s; the side file flips after ~450ms
+
+    [ "$(cat "$SEQ" 2>/dev/null)" = "$myseq" ] || { dbg "superseded: seq=$myseq now=$(cat "$SEQ" 2>/dev/null)"; exit 0; }   # a newer jump owns it now
+    read_side; [ "$CUR" = unknown ] && { dbg "watcher-unknown: dir=$dir want=$want, cannot judge landing"; exit 0; }        # watcher down, cannot judge
+
+    shove 14                         # one harder retry
+    if landed 15; then
+        if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
+        exit 0
+    fi
+
+    # The other screen never took it: Mac asleep, client disconnected, network
+    # gone. Do not leave the pointer buried against the edge.
+    centre_nastralis
+    note "the other screen didn't take the pointer (asleep or disconnected?)"
+) >/dev/null 2>&1 &

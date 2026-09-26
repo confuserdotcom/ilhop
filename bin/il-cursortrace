@@ -1,0 +1,544 @@
+#!/bin/sh
+# Falsify assumption A1: does `hyprctl cursorpos` freeze on Nastralis once
+# input-leap's server-side capture takes the pointer over, or does it keep
+# tracking every local synthetic delta regardless (meaning D-14's oracle is
+# wrong)? See 01-RESEARCH.md Q6 and 01-CONTEXT.md D-14's amendment.
+#
+#   il-cursortrace --sample                    one "x y" reading, now
+#   il-cursortrace --arm [--seconds N] [--interval MS]
+#                                               truncate + record a bounded,
+#                                               detached trace (default 1200s
+#                                               @ 25ms)
+#   il-cursortrace --verdict [--since ISO]     read the trace, locate the
+#                                               most recent hop marker, and
+#                                               report FROZE / TRACKED /
+#                                               INCONCLUSIVE
+#   il-cursortrace --selftest                  control: prove the sampler
+#                                               can see an 8px local move
+#                                               before any verdict is trusted
+#   il-cursortrace --landed <side> [--timeout MS]
+#                                               non-circular landing oracle
+#                                               (plan 01-04, D-16): answers
+#                                               whether the pointer is on
+#                                               <side> (mac|nastralis) via a
+#                                               local freeze probe. Never
+#                                               reads $XDG_RUNTIME_DIR/il-side.
+#                                               Exit 0 = landed, non-zero =
+#                                               not landed / unavailable.
+#   il-cursortrace --selftest-oracle           control: prove --landed cannot
+#                                               be bought by a stale side file
+#                                               (asserts the circularity D-16
+#                                               names is actually gone)
+#
+# Tolerant style (no `set -u`/`set -e`) copied from il-doctor, because one
+# failed probe should not abort a diagnostic run. This script holds no
+# `flock` and never opens fd 9 - it must never be able to interfere with
+# il-jump's single-flight lock (RESEARCH.md Pitfall 4).
+
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+TRACE="$RUN/ilhop-cursor.trace"
+TRACECAP=524288          # 512 KiB (T-1-05)
+
+ok=0; bad=0
+pass() { printf '  \033[32mok\033[0m    %s\n' "$1"; ok=$((ok+1)); }
+fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; bad=$((bad+1)); }
+warn() { printf '  \033[33mwarn\033[0m  %s\n' "$1"; }
+head() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+hypr() { # works even from an ssh session, which has no instance signature
+    HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | command head -n1)}" \
+        hyprctl "$@" 2>/dev/null
+}
+
+# The 0px liveness probe, same idiom as il-jump:61's ydotool_ok().
+ydotool_ok() { ydotool mousemove -- 0 0 >/dev/null 2>&1; }
+
+# A value "looks like an integer" only if every character after an optional
+# leading '-' is a digit. Rejects "null" (jq's empty/missing-field output),
+# empty strings, and anything non-numeric - so a failed or unparsable read
+# is never mistaken for a real coordinate.
+is_int() {
+    case "$1" in
+        -[0-9]*) rest=${1#-}; case "$rest" in *[!0-9]*) return 1 ;; esac; return 0 ;;
+        [0-9]*)  case "$1"   in *[!0-9]*) return 1 ;; esac; return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# One cursor reading. Sets SX/SY, or SX=SY=unavailable and returns 1 - never
+# a silently defaulted zero, per the plan's explicit requirement, because a
+# defaulted coordinate would make every later comparison meaningless.
+sample_once() {
+    raw=$(hypr cursorpos -j | jq -r '"\(.x) \(.y)"' 2>/dev/null)
+    set -- $raw
+    if [ "$#" -eq 2 ] && is_int "$1" && is_int "$2"; then
+        SX=$1; SY=$2
+        return 0
+    fi
+    SX=unavailable; SY=unavailable
+    return 1
+}
+
+# Bounded retry around sample_once() - a single 100ms-ticked poll capped at
+# $TIMEOUT_MS, same shape as il-jump:99-109's landed() rather than an
+# open-ended wait. Sets SX/SY on success; leaves them at sample_once()'s own
+# unavailable sentinel on exhaustion.
+sample_with_timeout() {
+    n=0
+    ticks=$(( TIMEOUT_MS / 100 ))
+    [ "$ticks" -lt 1 ] && ticks=1
+    while [ "$n" -lt "$ticks" ]; do
+        sample_once && return 0
+        sleep 0.1
+        n=$((n + 1))
+    done
+    return 1
+}
+
+# journalctl's --since/--until rejects our own `%z` offset shape (`+0100`,
+# no colon) outright - "Failed to parse timestamp" on stderr, silently
+# swallowed by callers that redirect it to /dev/null - and wants `+01:00`.
+# Only the trace's own on-disk timestamps and this function's callers need
+# this; the awk-based pre/post windowing later compares trace timestamps to
+# each other as plain strings and never goes near journalctl, so it is
+# unaffected either way. Passes an already-colon-offset string through
+# unchanged (idempotent), so a user-supplied --since ISO value is safe too.
+to_jctl_ts() {
+    ts=$1
+    body=${ts%[+-]????}
+    off=${ts#$body}
+    case "$off" in
+        [+-][0-9][0-9][0-9][0-9])
+            sign=$(printf '%s' "$off" | cut -c1)
+            hh=$(printf '%s' "$off" | cut -c2-3)
+            mm=$(printf '%s' "$off" | cut -c4-5)
+            printf '%s%s%s:%s\n' "$body" "$sign" "$hh" "$mm"
+            ;;
+        *) printf '%s\n' "$ts" ;;
+    esac
+}
+
+# milliseconds -> seconds.mmm, for `sleep`. Avoids depending on awk/bc for a
+# division that plain shell integer arithmetic already does exactly.
+ms_to_sec() {
+    ms=$1
+    s=$((ms / 1000))
+    r=$((ms % 1000))
+    printf '%d.%03d\n' "$s" "$r"
+}
+
+usage() {
+    echo "usage: il-cursortrace --sample | --arm [--seconds N] [--interval MS] | --verdict [--since ISO] [--before ISO] | --selftest | --landed <mac|nastralis> [--timeout MS] | --selftest-oracle" >&2
+    exit 2
+}
+
+MODE="${1:-}"
+[ "$#" -gt 0 ] && shift
+
+# --landed takes its side as a bare positional argument right after the mode,
+# not an --option - capture it here before the --option loop below runs.
+LANDED_SIDE=""
+if [ "$MODE" = "--landed" ]; then
+    LANDED_SIDE="${1:-}"
+    [ "$#" -gt 0 ] && shift
+fi
+
+SECONDS_ARM=1200
+INTERVAL_MS=25
+SINCE=""
+BEFORE=""
+TIMEOUT_MS=1500
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --seconds)  SECONDS_ARM=$2; shift 2 ;;
+        --interval) INTERVAL_MS=$2; shift 2 ;;
+        --since)    SINCE=$2; shift 2 ;;
+        --before)   BEFORE=$2; shift 2 ;;
+        --timeout)  TIMEOUT_MS=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+# ── --sample ─────────────────────────────────────────────────────────────────
+do_sample() {
+    if sample_once; then
+        printf '%s %s\n' "$SX" "$SY"
+        exit 0
+    fi
+    echo "unavailable"
+    exit 1
+}
+
+# ── --arm ────────────────────────────────────────────────────────────────────
+do_arm() {
+    : > "$TRACE"
+    sleep_s=$(ms_to_sec "$INTERVAL_MS")
+    ticks=$(( (SECONDS_ARM * 1000) / INTERVAL_MS ))
+    (
+        n=0
+        while [ "$n" -lt "$ticks" ]; do
+            if sample_once; then
+                ts=$(date +%Y-%m-%dT%H:%M:%S.%3N%z)
+                printf '%s %s %s\n' "$ts" "$SX" "$SY" >> "$TRACE"
+            fi
+            sz=$(wc -c < "$TRACE" 2>/dev/null); sz=${sz:-0}
+            [ "$sz" -ge "$TRACECAP" ] 2>/dev/null && break
+            sleep "$sleep_s"
+            n=$((n + 1))
+        done
+    ) >/dev/null 2>&1 &
+    pid=$!
+    # Give the child a moment to write its first sample before this process
+    # exits, so a caller checking `test -s "$TRACE"` right after does not
+    # race an empty file.
+    sleep 0.2
+    expiry=$(date -d "+${SECONDS_ARM} seconds" +%Y-%m-%dT%H:%M:%S%z 2>/dev/null)
+    printf 'armed: pid=%s trace=%s interval=%sms expires=%s (in %ss)\n' \
+        "$pid" "$TRACE" "$INTERVAL_MS" "${expiry:-unknown}" "$SECONDS_ARM"
+}
+
+# ── --verdict ────────────────────────────────────────────────────────────────
+do_verdict() {
+    if [ ! -s "$TRACE" ]; then
+        printf 'Marker: (none - trace file missing or empty: %s)\n' "$TRACE"
+        printf 'Verdict: INCONCLUSIVE (no trace recorded)\n'
+        exit 0
+    fi
+
+    first_ts=$(command head -n1 "$TRACE" | cut -d' ' -f1)
+    last_ts=$(tail -n1 "$TRACE" | cut -d' ' -f1)
+    window_start=${SINCE:-$first_ts}
+    # --before caps the marker SEARCH window's upper bound (distinct from the
+    # trace's own last sample) - needed because "most recent switch from"
+    # over an unbounded window will happily pick up activity that has
+    # nothing to do with the hop being scored (a later, unrelated crossing;
+    # deliberately injected motion for an unrelated diagnosis; ambient real
+    # use after the fact). Without it there is no way to exclude a marker
+    # that is chronologically later but not the one under test.
+    window_end=${BEFORE:-$last_ts}
+
+    # journalctl needs a colon-separated offset (+01:00), not our own %z
+    # shape (+0100) - see to_jctl_ts()'s comment.
+    jctl_start=$(to_jctl_ts "$window_start")
+    jctl_end=$(to_jctl_ts "$window_end")
+    marker_raw=$(journalctl --user -u input-leap-server.service \
+        --since "$jctl_start" --until "$jctl_end" -o json --no-pager 2>/dev/null \
+        | jq -r 'select(.MESSAGE | test("switch from")) | [.__REALTIME_TIMESTAMP, .MESSAGE] | @tsv' \
+        | tail -n1)
+
+    if [ -z "$marker_raw" ]; then
+        printf 'Marker: (none found in window %s .. %s)\n' "$window_start" "$window_end"
+        printf 'Verdict: INCONCLUSIVE (no switch-from marker found in the trace window)\n'
+        exit 0
+    fi
+
+    marker_us=$(printf '%s' "$marker_raw" | cut -f1)
+    marker_msg=$(printf '%s' "$marker_raw" | cut -f2-)
+    marker_epoch_s=$((marker_us / 1000000))
+    marker_line="$(date -d "@$marker_epoch_s" '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null) $marker_msg"
+
+    marker_ms=$((marker_us / 1000))
+    pre_ms=$((marker_ms - 2000))
+    post_ms=$((marker_ms + 2000))
+
+    # Rebuild each boundary in the exact same ISO-8601+ms+tz format the trace
+    # uses, so the awk pass below can compare timestamps as plain strings -
+    # lexical order equals chronological order for a fixed-width, fixed-zone
+    # format, and one awk pass is far cheaper than a `date -d` fork per line.
+    ms_to_iso() {
+        v=$1
+        sec=$((v / 1000)); frac=$((v % 1000))
+        if [ "$frac" -lt 0 ]; then frac=$((frac + 1000)); sec=$((sec - 1)); fi
+        date -d "@${sec}.$(printf '%03d' "$frac")" +%Y-%m-%dT%H:%M:%S.%3N%z 2>/dev/null
+    }
+    pre_start_str=$(ms_to_iso "$pre_ms")
+    mark_str=$(ms_to_iso "$marker_ms")
+    post_end_str=$(ms_to_iso "$post_ms")
+
+    stats=$(awk -v pre_start="$pre_start_str" -v mark="$mark_str" -v post_end="$post_end_str" '
+        {
+            ts = $1; x = $2; y = $3; key = x " " y
+            if (ts < mark && ts >= pre_start) {
+                pre_n++
+                if (!(key in pre_seen)) { pre_seen[key] = 1; pre_u++ }
+                if (pre_n == 1 || x < pre_minx) pre_minx = x
+                if (pre_n == 1 || x > pre_maxx) pre_maxx = x
+                if (pre_n == 1 || y < pre_miny) pre_miny = y
+                if (pre_n == 1 || y > pre_maxy) pre_maxy = y
+            } else if (ts > mark && ts <= post_end) {
+                post_n++
+                if (!(key in post_seen)) { post_seen[key] = 1; post_u++ }
+                if (post_n == 1 || x < post_minx) post_minx = x
+                if (post_n == 1 || x > post_maxx) post_maxx = x
+                if (post_n == 1 || y < post_miny) post_miny = y
+                if (post_n == 1 || y > post_maxy) post_maxy = y
+            }
+        }
+        END {
+            printf "PRE_N %d\n", pre_n + 0
+            printf "PRE_U %d\n", pre_u + 0
+            printf "PRE_MINX %d\n", pre_minx + 0
+            printf "PRE_MAXX %d\n", pre_maxx + 0
+            printf "PRE_MINY %d\n", pre_miny + 0
+            printf "PRE_MAXY %d\n", pre_maxy + 0
+            printf "POST_N %d\n", post_n + 0
+            printf "POST_U %d\n", post_u + 0
+            printf "POST_MINX %d\n", post_minx + 0
+            printf "POST_MAXX %d\n", post_maxx + 0
+            printf "POST_MINY %d\n", post_miny + 0
+            printf "POST_MAXY %d\n", post_maxy + 0
+        }
+    ' "$TRACE")
+
+    while IFS=' ' read -r k v; do
+        case "$k" in
+            PRE_N)  PRE_N=$v ;;   PRE_U)  PRE_U=$v ;;
+            PRE_MINX) PRE_MINX=$v ;; PRE_MAXX) PRE_MAXX=$v ;;
+            PRE_MINY) PRE_MINY=$v ;; PRE_MAXY) PRE_MAXY=$v ;;
+            POST_N) POST_N=$v ;;  POST_U) POST_U=$v ;;
+            POST_MINX) POST_MINX=$v ;; POST_MAXX) POST_MAXX=$v ;;
+            POST_MINY) POST_MINY=$v ;; POST_MAXY) POST_MAXY=$v ;;
+        esac
+    done <<EOF
+$stats
+EOF
+
+    MIN_SAMPLES=2
+    if [ "${PRE_N:-0}" -lt "$MIN_SAMPLES" ] || [ "${POST_N:-0}" -lt "$MIN_SAMPLES" ]; then
+        VERDICT=INCONCLUSIVE
+        REASON="too few samples in the window (pre=${PRE_N:-0} post=${POST_N:-0}, need >= $MIN_SAMPLES each)"
+    elif [ "${PRE_U:-0}" -lt 2 ]; then
+        VERDICT=INCONCLUSIVE
+        REASON="the pointer was already stationary before the marker (pre-window has only 1 distinct position) - freezing proves nothing"
+    elif [ "${POST_U:-0}" -eq 1 ]; then
+        VERDICT=FROZE
+        REASON="post-marker samples are all identical while pre-marker samples were not"
+    else
+        VERDICT=TRACKED
+        REASON="post-marker samples kept changing"
+    fi
+
+    printf 'Marker: %s\n' "$marker_line"
+    [ -n "$BEFORE" ] && printf 'Search bound: --before %s applied (marker search window capped at this instant)\n' "$BEFORE"
+    printf 'Window: pre=[%s .. %s]  post=[%s .. %s]\n' "$pre_start_str" "$mark_str" "$mark_str" "$post_end_str"
+    printf 'Pre-marker samples: %s (distinct positions: %s)  range x[%s,%s] y[%s,%s]\n' \
+        "${PRE_N:-0}" "${PRE_U:-0}" "${PRE_MINX:-?}" "${PRE_MAXX:-?}" "${PRE_MINY:-?}" "${PRE_MAXY:-?}"
+    printf 'Post-marker samples: %s (distinct positions: %s)  range x[%s,%s] y[%s,%s]\n' \
+        "${POST_N:-0}" "${POST_U:-0}" "${POST_MINX:-?}" "${POST_MAXX:-?}" "${POST_MINY:-?}" "${POST_MAXY:-?}"
+    printf '**Verdict:** %s (%s)\n' "$VERDICT" "$REASON"
+}
+
+# ── --selftest ───────────────────────────────────────────────────────────────
+do_selftest() {
+    head "il-cursortrace selftest"
+
+    if ! ydotool_ok; then
+        fail "ydotool cannot reach its daemon - no control move issued, so no verdict can ever be trusted until this is fixed"
+        printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
+        exit 1
+    fi
+    pass "ydotool can talk to the daemon"
+
+    st_trace="$RUN/ilhop-cursor.selftest.trace"
+    : > "$st_trace"
+    (
+        n=0
+        while [ "$n" -lt 120 ]; do   # ~3s at 25ms
+            if sample_once; then
+                ts=$(date +%Y-%m-%dT%H:%M:%S.%3N%z)
+                printf '%s %s %s\n' "$ts" "$SX" "$SY" >> "$st_trace"
+            fi
+            sleep 0.025
+            n=$((n + 1))
+        done
+    ) >/dev/null 2>&1 &
+    samp_pid=$!
+
+    sleep 0.5
+    ydotool mousemove -- 8 0
+    sleep 0.5
+    ydotool mousemove -- -8 0
+    sleep 1
+    wait "$samp_pid" 2>/dev/null
+
+    if [ ! -s "$st_trace" ]; then
+        fail "the sampler recorded fewer than two distinct positions across the known 8px local move (no samples at all)"
+    else
+        stats=$(awk '
+            { if (NR == 1 || $2 < minx) minx = $2; if (NR == 1 || $2 > maxx) maxx = $2
+              k = $2","$3; if (!(k in seen)) { seen[k] = 1; d++ } }
+            END { printf "%d %d %d", minx + 0, maxx + 0, d + 0 }
+        ' "$st_trace")
+        set -- $stats
+        minx=$1; maxx=$2; distinct=$3
+        span=$((maxx - minx)); [ "$span" -lt 0 ] && span=$((0 - span))
+
+        firstx=$(command head -n1 "$st_trace" | cut -d' ' -f2)
+        lastx=$(tail -n1 "$st_trace" | cut -d' ' -f2)
+        driftback=$((lastx - firstx)); [ "$driftback" -lt 0 ] && driftback=$((0 - driftback))
+
+        if [ "$distinct" -ge 2 ] && [ "$span" -ge 8 ]; then
+            pass "sampler saw $distinct distinct position(s), x-span ${span}px (>= 8px) across the control move"
+        else
+            fail "the sampler recorded fewer than two distinct positions across the known 8px local move (distinct=$distinct span=${span}px) - a blind sampler; no later verdict can be trusted"
+        fi
+
+        if [ "$driftback" -le 3 ]; then
+            pass "pointer returned to within ${driftback}px of its starting x after the control probe"
+        else
+            warn "pointer ended ${driftback}px from its starting x after the equal-and-opposite control probe"
+        fi
+    fi
+
+    rm -f "$st_trace" 2>/dev/null
+
+    printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
+    [ "$bad" -eq 0 ] || exit 1
+}
+
+# ── local freeze probe (D-14/D-16 oracle, per 01-A1-RESULT.md's FROZE verdict) ─
+# Never reads $XDG_RUNTIME_DIR/il-side. Issues one small relative ydotool
+# delta and samples cursorpos immediately before and after. If the position
+# does not change, input-leap's capture has the pointer (it is on the far
+# side); if it does, the pointer is local. Single-digit pixels only, and the
+# delta is undone the moment it is confirmed to have taken effect locally -
+# never left in place, never attempted with `-a` absolute mode (broken on
+# this stack, il-jump:34).
+PROBE_PX=5
+
+# Sets PROBE_STATUS to local|frozen|unavailable, PROBE_DETAIL to a one-line
+# explanation, and (when available) PROBE_BX/PROBE_BY/PROBE_AX/PROBE_AY to
+# the raw before/after readings, for the caller to print.
+freeze_probe() {
+    if ! ydotool_ok; then
+        PROBE_STATUS=unavailable
+        PROBE_DETAIL="ydotool cannot reach its daemon - no probe delta could be issued"
+        return 1
+    fi
+    if ! sample_with_timeout; then
+        PROBE_STATUS=unavailable
+        PROBE_DETAIL="cursor position unavailable before the probe (timeout ${TIMEOUT_MS}ms)"
+        return 1
+    fi
+    PROBE_BX=$SX; PROBE_BY=$SY
+
+    ydotool mousemove -- "$PROBE_PX" 0
+
+    if ! sample_with_timeout; then
+        PROBE_STATUS=unavailable
+        PROBE_DETAIL="cursor position unavailable after the probe (timeout ${TIMEOUT_MS}ms)"
+        return 1
+    fi
+    PROBE_AX=$SX; PROBE_AY=$SY
+
+    dx=$((PROBE_AX - PROBE_BX))
+    if [ "$dx" -eq 0 ]; then
+        PROBE_STATUS=frozen
+        PROBE_DETAIL="pointer did not move locally after a ${PROBE_PX}px relative probe - capture is active, pointer is on the far side"
+    else
+        PROBE_STATUS=local
+        PROBE_DETAIL="pointer moved ${dx}px locally after the probe - not captured, pointer is here"
+        # It took effect locally, so undo it - the check must leave the
+        # pointer exactly where it found it.
+        ydotool mousemove -- "$((0 - dx))" 0
+    fi
+    return 0
+}
+
+# ── --landed ─────────────────────────────────────────────────────────────────
+do_landed() {
+    side="$1"
+    case "$side" in
+        mac|nastralis) : ;;
+        *)
+            echo "il-cursortrace --landed: side must be 'mac' or 'nastralis' (got '${side:-}')" >&2
+            exit 2
+            ;;
+    esac
+
+    freeze_probe
+
+    printf 'signal: local-freeze-probe (never reads %s)\n' "$RUN/il-side"
+    if [ "$PROBE_STATUS" = unavailable ]; then
+        printf 'result: unavailable (%s)\n' "$PROBE_DETAIL"
+        printf '**landed(%s):** unknown\n' "$side"
+        exit 2
+    fi
+
+    printf 'before: %s %s\n' "$PROBE_BX" "$PROBE_BY"
+    printf 'probe: relative +%spx,0 (ydotool mousemove)\n' "$PROBE_PX"
+    printf 'after: %s %s\n' "$PROBE_AX" "$PROBE_AY"
+    printf 'result: %s (%s)\n' "$PROBE_STATUS" "$PROBE_DETAIL"
+
+    case "$side" in
+        mac)       [ "$PROBE_STATUS" = frozen ] && landed=yes || landed=no ;;
+        nastralis) [ "$PROBE_STATUS" = local ]  && landed=yes || landed=no ;;
+    esac
+    printf '**landed(%s):** %s\n' "$side" "$landed"
+    [ "$landed" = yes ] && exit 0 || exit 1
+}
+
+# ── --selftest-oracle ───────────────────────────────────────────────────────
+# Proves the circularity D-16 names is actually gone: a stale side file
+# claiming a landing that never happened must NOT be able to buy a pass from
+# --landed. The old check (`il-doctor:110`/`:112`, before this plan) would
+# have passed here on the strength of the injected value alone.
+do_selftest_oracle() {
+    head "il-cursortrace selftest-oracle"
+
+    # The assertion below only means anything if the pointer genuinely is
+    # local right now - refuse rather than assert something the machine's
+    # real state cannot support.
+    freeze_probe
+    if [ "$PROBE_STATUS" != local ]; then
+        fail "pointer is not local at the start (status=${PROBE_STATUS:-unavailable}: ${PROBE_DETAIL:-no probe result}) - cannot run the injected-stale-cache assertion"
+        printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
+        exit 1
+    fi
+    pass "pointer confirmed local before the assertion ($PROBE_DETAIL)"
+
+    STATEFILE="$RUN/il-side"
+    had_state=0
+    snapshot=""
+    if [ -e "$STATEFILE" ]; then
+        had_state=1
+        snapshot=$(cat "$STATEFILE" 2>/dev/null)
+    fi
+    restore_state() {
+        if [ "$had_state" -eq 1 ]; then
+            printf '%s\n' "$snapshot" > "$STATEFILE" 2>/dev/null
+        else
+            rm -f "$STATEFILE" 2>/dev/null
+        fi
+    }
+    trap restore_state EXIT INT TERM
+
+    # Deliberately claim the pointer is on the far side while it is
+    # demonstrably local - the exact stale-cache scenario D-16 describes.
+    printf 'mac\n' > "$STATEFILE" 2>/dev/null
+
+    rc=0
+    ( do_landed mac ) >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        fail "the landing check reported landed(mac) on the strength of a deliberately stale side file alone - the circularity survived"
+    else
+        pass "the landing check ignored the stale side file and correctly reported not-landed (exit $rc)"
+    fi
+
+    restore_state
+    trap - EXIT INT TERM
+
+    printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
+    [ "$bad" -eq 0 ] || exit 1
+}
+
+case "$MODE" in
+    --sample)          do_sample ;;
+    --arm)              do_arm ;;
+    --verdict)          do_verdict ;;
+    --selftest)         do_selftest ;;
+    --landed)           do_landed "$LANDED_SIDE" ;;
+    --selftest-oracle)  do_selftest_oracle ;;
+    *) usage ;;
+esac

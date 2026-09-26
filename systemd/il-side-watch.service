@@ -1,0 +1,14 @@
+[Unit]
+Description=Track which machine currently owns the input-leap pointer
+After=input-leap-server.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/il-side-watch
+Restart=always
+RestartSec=3
+Nice=5
+
+[Install]
+WantedBy=default.target
