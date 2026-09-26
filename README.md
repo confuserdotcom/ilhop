@@ -105,10 +105,12 @@ own with an `ilhop` comment.
 
 ## Known limits
 
-- **A modifier held across a hop does not carry over.** Holding ALT through
-  the hop and pressing `1` on the Mac does nothing: release ALT and press it
-  again. This is input-leap's Wayland (libei) server dropping modifier state,
-  not something ilhop can fix from outside.
+- **A modifier held across a hop needs a patched input-leap.** Stock
+  input-leap drops it: hold ALT through the hop, press `1` on the Mac, and
+  nothing happens until you release and re-press ALT. `upstream/input-leap/`
+  has the fix as an Arch package (`cd upstream/input-leap && makepkg -si
+  --nocheck`, then `systemctl --user restart input-leap-server`). The next
+  stock input-leap update replaces it; `ilhop doctor` warns when that happens.
 - **The Mac landing aims only horizontally.** Moving the pointer vertically
   would sweep through the Mac's hot corners. With two windows stacked on the
   right-hand side of the Mac, the pointer may land in the one that does not

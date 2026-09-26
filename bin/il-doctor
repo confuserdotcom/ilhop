@@ -69,6 +69,11 @@ if systemctl --user is-active --quiet input-leap-server.service; then
 else
     fail "input-leap-server.service NOT running   -> systemctl --user restart input-leap-server"
 fi
+# UPSTREAM-01: the patched build carries a held modifier across the hop. A
+# stock input-leap update silently replaces it.
+strings "$(command -v input-leaps)" 2>/dev/null | grep -q 'held at capture start' \
+    && pass "input-leap carries held modifiers across a hop (ilhop patch)" \
+    || warn "stock input-leap: hold ALT through a hop and it is dropped   -> rebuild upstream/input-leap (see README)"
 lvl=$(grep -o -- '--debug [A-Z]*' "$HOME/.config/systemd/user/input-leap-server.service" 2>/dev/null | awk '{print $2}')
 [ "$lvl" = INFO ] && pass "log level INFO (side tracking needs it, and DEBUG floods the journal)" \
                   || warn "log level is ${lvl:-?}; INFO is what il-side-watch expects"
