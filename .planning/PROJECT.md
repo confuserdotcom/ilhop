@@ -4,8 +4,7 @@
 
 `ilhop` is a keyboard-driven screen-hop layer for [input-leap](https://github.com/input-leap/input-leap)
 on Wayland. One chord moves the pointer and keyboard focus between a Linux box
-and a Mac, in both directions, and the window-focus keys hop automatically when
-you run out of windows in that direction. It exists because input-leap's own
+and a Mac, in both directions. It exists because input-leap's own
 keyboard screen-switching does not work on Wayland at all.
 
 Today it is ~457 lines of shell and C living loose in `~/.local/bin/il-*` on one
@@ -40,11 +39,11 @@ Shipped, live, and confirmed working by `il-doctor` (21/21 checks passing as of
 - ✓ Detached self-check ~1.2s after the hop: retries once, and if the far screen
   never took it, recentres locally and notifies rather than stranding the
   pointer at the edge — existing
-- ✓ `il-focus-jump` — geometry-checked edge detection via `hyprctl clients`, so
+- ✗ RETIRED 2026-09-26 — `il-focus-jump` — geometry-checked edge detection via `hyprctl clients`, so
   ALT+H focuses the left window normally and only hops when nothing is further
   left — existing
-- ✓ Mac-side mirror on AeroSpace — `il-focus-jump-mac` at `alt-l`,
-  `il-jump-mac` at `alt-c`, warm ssh control master via launchd — existing
+- ✓ Mac-side mirror on AeroSpace — `il-jump-mac` at `alt-c` (`il-focus-jump-mac`
+  at `alt-l` retired 2026-09-26), warm ssh control master via launchd — existing
 - ✓ `il-doctor [--test]` — 21-check health report plus live round trip — existing
 - ✓ `il-reset` — one-command recovery when input is wedged — existing
 - ✓ `il-heldmods` — reads genuinely-held modifiers from the kernel via
@@ -70,9 +69,9 @@ Six defects and the packaging work. Bugs first, in this order.
 - [ ] Return leg is slow and asymmetric — Ryuk→Mac is 15–20ms, Mac→Ryuk goes
       over ssh at ~40–110ms warm and ~1.6s if the launchd control master has
       lapsed. The hop should feel the same in both directions.
-- [ ] ALT+H edge detection misfires — hops when a window still exists in that
+- [-] DROPPED 2026-09-26 — ALT+H edge detection misfires — hops when a window still exists in that
       direction, or refuses to hop when genuinely at the edge.
-- [ ] ALT+H feels laggy against plain focus — the `hyprctl clients` geometry
+- [-] DROPPED 2026-09-26 — ALT+H feels laggy against plain focus — the `hyprctl clients` geometry
       query runs before the focus moves, so the shipped focus-left feels instant
       and ours does not.
 - [ ] Package as `ilhop` — standalone git repo, install script, uninstall path,
@@ -86,6 +85,7 @@ Six defects and the packaging work. Bugs first, in this order.
   deferred to v2 by explicit decision. v1 targets exactly one tested combination.
   Building adapters for hardware the author cannot press keys on directly
   contradicts this project's hardest constraint.
+- **Auto-hop on the window-focus keys** — Retired 2026-09-26 by the author's decision: `ALT+C` is the only hop key on both machines. Edge-hop on the focus keys cost more than it gave — fiddly edge detection, and `ALT+H` firing two handlers per press. `il-focus-jump` / `il-focus-jump-mac` backed up to `~/.local/share/ilhop-retired/`, AeroSpace `alt-l` restored to plain focus.
 - **Upstreaming into `ryoku-desktop`** — v2. Repo first, so it is provably
   installable standing alone before it inherits Ryoku's release cycle.
 - **The rest of the two-machine kit** — `push` / `pull` / `openon`, copi
@@ -119,9 +119,8 @@ input-leap's tracked cursor — the client ignores non-HID mouse events. This is
 why the return leg from the Mac shells back over ssh, and why that leg is slow.
 
 **Current binding layout.** `ALT+C` → `il-jump toggle` (unconditional hop, same
-chord on both machines). `ALT+H` → `il-focus-jump left` (focus left, hop at the
-edge). `ALT+L` stays plain focus on the Linux side — nothing is linked to the
-right of it, so that is correct by geometry, not an oversight. The binds live in
+chord on both machines). It is the only hop key: `ALT+H` / `ALT+L` are plain
+focus on both machines since 2026-09-26 (edge-hop retired). The binds live in
 a fork of `binds.lua` at `~/.config/ryoku/user_edits/hypr/modules/binds.lua`
 rather than `user.lua`, because only `binds.lua` is parsed into the Super+K
 cheatsheet.
@@ -174,6 +173,7 @@ single most important piece of context in this document.
 | `toggle` mode reading a side file, rather than fixed-direction binds | One chord works both ways and survives crossing with the mouse | ✓ Good |
 | Optimistic recentre + detached self-check, not awaited confirmation | Awaiting journald cost ~450ms and made the hop feel laggy; the detached check covers the failure case | ✓ Good |
 | Never re-press held modifiers through ydotool | Wedged the real keyboard and mouse on 2026-09-10; reverted to `92f64bc` | ✓ Good — and the "first chord eaten" bug still needs a different fix |
+| One hop key (`ALT+C`); no auto-hop on the focus keys | Edge detection was fiddly and doubled up `ALT+H`; one chord both ways is simpler to use and to develop | ✓ Good — decided 2026-09-26, dropped Phase 3 |
 | Bugs before packaging | A working daily driver sooner, and packaging a buggy thing means packaging it twice | — Pending |
 | v1 = Hyprland + AeroSpace only; adapters in v2 | Adapters for untestable hardware contradict the verification constraint | — Pending |
 | Repo first, upstream to Ryoku second | Prove it installs standalone before inheriting Ryoku's release cycle | — Pending |

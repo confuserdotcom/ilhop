@@ -32,7 +32,7 @@ Plan: 7 of 7 executed
 Status: Re-verified 2026-09-18 — passed (6/6). CR-01 closed by 01-07.
 Last activity: 2026-09-18 — CR-01 gap verified closed in live code; phase records updated
 
-Next: Phase 02 (Clean Handoff) — HOP-01, HOP-04, HOP-06. Not planned yet.
+Next: Phase 02 (Clean Handoff) — HOP-06 closed 2026-09-26; HOP-04 in progress, HOP-01 awaits a cold keyboard test. Phase 3 (focus chain) DROPPED 2026-09-26 — ALT+C is the only hop key.
 **The Mac is reachable** (ssh 0.120s over LAN mDNS via `Host mac`, up 10 days; Tailscale
 showing it offline is irrelevant — the hop path does not use `mac-ts`). An earlier note in
 this file claiming Phase 02 was "gated on the Mac being reachable" was wrong and is retracted.

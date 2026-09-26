@@ -1,0 +1,40 @@
+{
+  "phase": "02",
+  "phase_name": "clean-handoff",
+  "timestamp": "2026-09-18T19:00:00.000Z",
+  "areas_completed": ["HOP-01 evidence restart"],
+  "areas_remaining": ["Return-leg transport (HOP-04)", "Cursor redraw (HOP-06)", "Human-gate budget"],
+  "decisions": {
+    "HOP-01 evidence restart": [
+      {
+        "question": "Do you still see the first-chord-after-a-hop being eaten in daily use?",
+        "answer": "Not sure — I don't test it. After a hop the author usually reaches for the mouse or waits a beat, so the first chord is rarely exercised at all.",
+        "options_presented": ["Yes, still happens", "Yes, but only the modifier", "Rarely / can't remember", "Not sure — I don't test it"]
+      },
+      {
+        "question": "Should Phase 2 run criterion 1's four-modifier test cold against today's code as its first task, before any fix is designed?",
+        "answer": "Yes, with a not-a-defect exit. All four clean → HOP-01 closes as a recorded finding (HOP-03 precedent). Any failure → deliberate reproduction, fix designed against a real failing case.",
+        "options_presented": ["Yes, with a not-a-defect exit (Recommended)", "Yes, but a clean pass isn't conclusive", "No — fix the ordering first"]
+      },
+      {
+        "question": "How much modstate work does Phase 2 do, and does it become part of ilhop?",
+        "answer": "Fix in place, stays out of the repo. Mask before judging, print the masked value, keep it at its current Mac path as a personal diagnostic.",
+        "options_presented": ["Fix in place, stays out of the repo (Recommended)", "Fix it and adopt it into the repo", "Don't touch it this phase"]
+      },
+      {
+        "question": "If a criterion-1 press fails, what direction does the fix take?",
+        "answer": "Don't pre-commit — record candidates, let the failure's shape pick. Leading candidate: re-time il-jump:223's UP-flush.",
+        "options_presented": ["Don't pre-commit — record candidates (Recommended)", "Re-time the existing UP-flush first", "Treat it as the upstream hole and document it"]
+      }
+    ]
+  },
+  "deferred_ideas": [],
+  "canonical_refs": [
+    ".planning/PROJECT.md",
+    ".planning/REQUIREMENTS.md",
+    ".planning/ROADMAP.md",
+    ".planning/STATE.md",
+    ".planning/phases/01-regression-recovery/01-CONTEXT.md",
+    ".planning/phases/01-regression-recovery/01-HOP-03-FINDING.md"
+  ]
+}
