@@ -1,0 +1,192 @@
+From d2773622e376859634f8f8dd9beaa8468dd03e3d Mon Sep 17 00:00:00 2001
+From: nastralis <alaerattale001@gmail.com>
+Date: Sat, 26 Sep 2026 22:13:09 +0000
+Subject: [PATCH] fix(ei): keep modifiers held when input capture starts
+
+A modifier pressed before capture began never arrives as an EI key
+event, and clearStaleModifiers() zeroed the depressed state, so holding
+Alt across the screen edge sent a bare key to the client. Re-apply the
+modifier keys the kernel reports as held (EVIOCGKEY).
+---
+ src/lib/platform/EiKeyState.cpp            | 61 ++++++++++++++++++++++
+ src/lib/platform/EiKeyState.h              |  4 ++
+ src/unittests/platform/EiKeyStateTests.cpp | 41 +++++++++++++++
+ src/unittests/platform/EiKeyStateTests.h   |  1 +
+ 4 files changed, 107 insertions(+)
+
+diff --git a/src/lib/platform/EiKeyState.cpp b/src/lib/platform/EiKeyState.cpp
+index 69bf61c4..96f46eeb 100644
+--- a/src/lib/platform/EiKeyState.cpp
++++ b/src/lib/platform/EiKeyState.cpp
+@@ -13,10 +13,20 @@
+ #include "deskflow/AppUtil.h"
+ #include "platform/XDGKeyUtil.h"
+ 
++#include <array>
+ #include <cstddef>
++#include <cstring>
+ #include <memory>
+ #include <unistd.h>
+ 
++#if __has_include(<linux/input.h>)
++#include <dirent.h>
++#include <fcntl.h>
++#include <linux/input.h>
++#include <sys/ioctl.h>
++#define HAVE_EVDEV_KEY_STATE
++#endif
++
+ namespace deskflow {
+ 
+ EiKeyState::EiKeyState(EiScreen *screen, IEventQueue *events)
+@@ -373,5 +383,56 @@ void EiKeyState::clearStaleModifiers()
+   }
+   m_xkbState = xkb_state_new(m_xkbKeymap);
+   xkb_state_update_mask(m_xkbState, 0, 0, lockedMods, 0, 0, lockedLayout);
++
++  // Modifiers pressed before input capture began never reach us as EI key
++  // events, and the compositor is not required to send the depressed state
++  // on activation, so re-apply the ones that are physically held.
++  for (const auto key : heldModifierKeys()) {
++    LOG_DEBUG("modifier key %d held at capture start", key);
++    xkb_state_update_key(m_xkbState, key + 8, XKB_KEY_DOWN);
++  }
++}
++
++std::vector<std::uint32_t> EiKeyState::heldModifierKeys() const
++{
++  std::vector<std::uint32_t> keys;
++#ifdef HAVE_EVDEV_KEY_STATE
++  static constexpr std::array<std::uint32_t, 8> s_modifierKeys = {KEY_LEFTCTRL,   KEY_RIGHTCTRL, KEY_LEFTSHIFT,
++                                                                  KEY_RIGHTSHIFT, KEY_LEFTALT,   KEY_RIGHTALT,
++                                                                  KEY_LEFTMETA,   KEY_RIGHTMETA};
++  constexpr std::size_t bitsPerLong = 8 * sizeof(unsigned long);
++  std::array<unsigned long, (KEY_MAX + bitsPerLong) / bitsPerLong> held{};
++
++  // Needs read access to /dev/input (usually the input group). Without it
++  // nothing is re-applied and the state is simply cleared, as before.
++  DIR *dir = opendir("/dev/input");
++  if (dir == nullptr) {
++    return keys;
++  }
++  while (const dirent *entry = readdir(dir)) {
++    if (strncmp(entry->d_name, "event", 5) != 0) {
++      continue;
++    }
++    const int fd = openat(dirfd(dir), entry->d_name, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
++    if (fd < 0) {
++      continue;
++    }
++    std::array<unsigned long, held.size()> state{};
++    if (ioctl(fd, EVIOCGKEY(sizeof(state)), state.data()) >= 0) {
++      for (std::size_t i = 0; i < held.size(); i++) {
++        held[i] |= state[i];
++      }
++    }
++    close(fd);
++  }
++  closedir(dir);
++
++  for (const auto key : s_modifierKeys) {
++    if ((held[key / bitsPerLong] >> (key % bitsPerLong)) & 1) {
++      keys.push_back(key);
++    }
++  }
++#endif
++  return keys;
+ }
+ } // namespace deskflow
+diff --git a/src/lib/platform/EiKeyState.h b/src/lib/platform/EiKeyState.h
+index 8f4b941d..cef0cae3 100644
+--- a/src/lib/platform/EiKeyState.h
++++ b/src/lib/platform/EiKeyState.h
+@@ -10,6 +10,7 @@
+ #include "deskflow/KeyState.h"
+ #include "platform/EiScreen.h"
+ 
++#include <vector>
+ #include <xkbcommon/xkbcommon.h>
+ 
+ struct xkb_context;
+@@ -39,6 +40,9 @@ public:
+   void clearStaleModifiers() override;
+ 
+ protected:
++  //! Linux keycodes of the modifier keys physically held right now
++  virtual std::vector<std::uint32_t> heldModifierKeys() const;
++
+   // KeyState overrides
+   void getKeyMap(KeyMap &keyMap) override;
+   void fakeKey(const Keystroke &keystroke) override;
+diff --git a/src/unittests/platform/EiKeyStateTests.cpp b/src/unittests/platform/EiKeyStateTests.cpp
+index fadb17fe..af2d63bd 100644
+--- a/src/unittests/platform/EiKeyStateTests.cpp
++++ b/src/unittests/platform/EiKeyStateTests.cpp
+@@ -36,6 +36,20 @@ public:
+   }
+ };
+ 
++// Reports a fixed set of physically held modifier keys instead of reading /dev/input
++class HeldKeysEiKeyState : public deskflow::EiKeyState
++{
++public:
++  using EiKeyState::EiKeyState;
++  std::vector<std::uint32_t> m_heldKeys;
++
++protected:
++  std::vector<std::uint32_t> heldModifierKeys() const override
++  {
++    return m_heldKeys;
++  }
++};
++
+ const char TestKeymap[] = R"XKB(xkb_keymap {
+ xkb_keycodes "test" {
+     minimum = 8;
+@@ -134,4 +148,31 @@ void EiKeyStateTests::updateLockedModifiers_compositorLockState_numLockFollowsCo
+   QVERIFY((keyState.pollActiveModifiers() & KeyModifierNumLock) == 0);
+ }
+ 
++void EiKeyStateTests::clearStaleModifiers_shiftHeldPhysically_shiftKept()
++{
++  // Linux keycode of left shift; xkb keycode 50 in the test keymap
++  constexpr std::uint32_t linuxLeftShift = 42;
++
++  TestAppUtil appUtil;
++  EventQueue eventQueue;
++  HeldKeysEiKeyState keyState(nullptr, &eventQueue);
++
++  QTemporaryFile keymapFile;
++  QVERIFY(keymapFile.open());
++  const QByteArray keymapData = QByteArray::fromRawData(TestKeymap, sizeof(TestKeymap) - 1);
++  QCOMPARE(keymapFile.write(keymapData), keymapData.size());
++  QVERIFY(keymapFile.flush());
++  keyState.init(keymapFile.handle(), keymapFile.size());
++
++  // Shift went down before capture began, so no EI key event was seen for it
++  keyState.m_heldKeys = {linuxLeftShift};
++  keyState.clearStaleModifiers();
++  QVERIFY((keyState.pollActiveModifiers() & KeyModifierShift) != 0);
++
++  // Released on the client side: the next clear drops it
++  keyState.m_heldKeys = {};
++  keyState.clearStaleModifiers();
++  QVERIFY((keyState.pollActiveModifiers() & KeyModifierShift) == 0);
++}
++
+ QTEST_MAIN(EiKeyStateTests)
+diff --git a/src/unittests/platform/EiKeyStateTests.h b/src/unittests/platform/EiKeyStateTests.h
+index 8228a554..2a426f1c 100644
+--- a/src/unittests/platform/EiKeyStateTests.h
++++ b/src/unittests/platform/EiKeyStateTests.h
+@@ -19,6 +19,7 @@ private Q_SLOTS:
+   void initTestCase();
+   void clearStaleModifiers_shiftDownAndNumLockOn_shiftClearedAndNumLockPreserved();
+   void updateLockedModifiers_compositorLockState_numLockFollowsCompositor();
++  void clearStaleModifiers_shiftHeldPhysically_shiftKept();
+ 
+ private:
+   Arch m_arch;
+-- 
+2.55.0
+
