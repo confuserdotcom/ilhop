@@ -46,7 +46,7 @@ Deferred. Tracked, not roadmapped.
 
 ### Upstream
 
-- **UPSTREAM-01**: Patch input-leap's server to handle `EI_EVENT_KEYBOARD_MODIFIERS` (an empty `// FIXME` in `EiScreen.cpp`) or otherwise seed modifiers already held when capture starts, so a modifier held across a hop reaches the far side (the HOP-01 gap). First step: log whether Hyprland's portal sends that event at all; fallback is reading held keys from the kernel as `il-heldmods` does. Ship as a patched Arch package, offer upstream. Trigger: the release-and-re-press workaround becoming a real annoyance.
+- [x] **UPSTREAM-01**: Patch input-leap's server to handle `EI_EVENT_KEYBOARD_MODIFIERS` (an empty `// FIXME` in `EiScreen.cpp`) or otherwise seed modifiers already held when capture starts, so a modifier held across a hop reaches the far side (the HOP-01 gap). First step: log whether Hyprland's portal sends that event at all; fallback is reading held keys from the kernel as `il-heldmods` does. Ship as a patched Arch package, offer upstream. Trigger: the release-and-re-press workaround becoming a real annoyance. **Closed 2026-09-26**, author-verified at the keyboard (hold Alt, Alt+C, keep holding, 1 -> Mac workspace 1). Finding: Hyprland 0.56.2 sends `EI_EVENT_KEYBOARD_MODIFIERS` only on a change while captured, never on activation, so the FIXME alone could not fix it. Fix (`upstream/input-leap/`, input-leap 3.0.3-1.1): on primary `leave()` rebuild the xkb state from the kernel's held modifier keys (EVIOCGKEY), plus handle the modifiers event. Hyprland untouched. Doctor warns when a stock update replaces the build. Not yet offered upstream.
 
 ### Portability
 
