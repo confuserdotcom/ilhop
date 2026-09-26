@@ -2,9 +2,31 @@
 # Panic button for the two-machine setup: unstick everything and bring the
 # pointer home. Safe to run at any time, from anywhere.
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-echo "il-reset: stopping any in-flight jumps"
-for p in $(pgrep -f '\.local/bin/il-jump' 2>/dev/null); do [ "$p" = "$$" ] || kill "$p" 2>/dev/null; done
-rm -f "$RUN/il-jump.lock" "$RUN/il-jump.seq"
+LOCK="$RUN/il-jump.lock"
+
+# Hold il-jump's single-flight lock for the whole reset (DIAG-02): a hop in
+# flight finishes its ~25ms first, and a hop pressed during the reset is
+# dropped by il-jump's own `flock -n` instead of interleaving with it. Never
+# delete the lock file: a new il-jump would lock a fresh inode and both would
+# run. If a wedged hop holds it past 2s, kill it and take the lock anyway.
+echo "il-reset: waiting for any in-flight jump"
+exec 9>"$LOCK"
+# Pattern ends at il-jump or il-jump + space so il-jump-listen (the Mac's live
+# pipe session) is never matched.
+kill_jumps() { pkill -f '/il-jump( |$)' 2>/dev/null; }
+if ! flock -w 2 9; then
+    echo "il-reset: a jump is wedged, killing it"
+    kill_jumps; flock -w 2 9 || echo "il-reset: could not take the lock, continuing anyway" >&2
+fi
+# Detached self-checks drop the lock by design; stop them so a late retry
+# shove cannot land in the middle of the reset.
+kill_jumps
+rm -f "$RUN/il-jump.seq"
+
+# Test seam for il-repro --reset-race: hold the lock this long, then stop.
+if [ -n "${IL_RESET_DRY:-}" ]; then
+    echo "il-reset: locked at $(date +%s%3N)"; sleep "$IL_RESET_DRY"; exit 0
+fi
 
 echo "il-reset: releasing every modifier"
 for i in 1 2 3; do

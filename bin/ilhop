@@ -1,0 +1,31 @@
+#!/bin/sh
+# ilhop - one name for every command (PKG-04). The il-* names it runs keep
+# working on their own, so existing binds never have to change.
+#
+#   ilhop [toggle|left|right]   hop (default: toggle)        il-jump
+#   ilhop doctor [--test]       health check, --test adds a live round trip
+#   ilhop reset                 panic button: unstick input, pointer home
+#   ilhop repro [--mode]        scripted checks               il-repro
+#   ilhop trace ...             pointer oracle                il-cursortrace
+#   ilhop heldmods              modifiers physically held     il-heldmods
+#   ilhop listen                Mac pipe endpoint             il-jump-listen
+#   ilhop side-watch            side tracker (systemd runs it) il-side-watch
+
+set -u
+
+run() { # $1 = il-* suffix; the sibling of this file first, then PATH
+    t="$(dirname "$(readlink -f "$0")")/il-$1"
+    [ -x "$t" ] || t=$(command -v "il-$1") || { echo "ilhop: il-$1 not found" >&2; exit 1; }
+    shift
+    exec "$t" "$@"
+}
+
+case "${1:-toggle}" in
+    toggle|left|right) run jump "${1:-toggle}" ;;
+    hop)        shift; run jump "$@" ;;
+    doctor|reset|repro|heldmods|side-watch) c=$1; shift; run "$c" "$@" ;;
+    trace)      shift; run cursortrace "$@" ;;
+    listen)     shift; run jump-listen "$@" ;;
+    -h|--help|help) sed -n '2,13s/^# \{0,1\}//p' "$0" ;;
+    *) echo "ilhop: unknown command '$1' (ilhop help)" >&2; exit 2 ;;
+esac

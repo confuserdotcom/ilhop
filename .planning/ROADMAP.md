@@ -46,7 +46,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Clean Handoff** - The first chord after a hop lands, the return leg is as fast as the outbound, and the pointer is drawn when it arrives
 - [-] ~~**Phase 3: Focus Chain Precision**~~ - DROPPED 2026-09-26: auto-hop on the focus keys retired, `ALT+C` is the only hop key
 - [x] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
-- [ ] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
+- [x] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
 - [ ] **Phase 5: Standalone Install** - A stranger clones the repo, installs, uses it, and removes it without residue
 
 ## Phase Details
@@ -146,7 +146,7 @@ document landing behaviour this phase changes.
   4. Firing `ilhop reset` while a hop is in flight cannot interleave with it: the single-flight lock holds across the reset, proven by a scripted race with no human involved.
   5. After the rename the author presses the hop bind on both machines and the hop behaves exactly as it did in Phase 3.1 — same landing, same latency, no new compositor call sites outside the one place they are isolated.
 
-**Plans**: TBD
+**Plans**: done inline 2026-09-26, no plan files. `ilhop doctor --test` 27/27, `ilhop repro --all` 95/95; binds unchanged, so the hop behaves as in Phase 3.1. Phase COMPLETE.
 
 ### Phase 5: Standalone Install
 

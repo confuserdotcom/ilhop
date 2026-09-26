@@ -25,15 +25,15 @@ Retired 2026-09-26 by the author's decision: `ALT+C` is the only hop key on both
 
 ### Diagnostics and Recovery
 
-- [ ] **DIAG-01**: `ilhop doctor` runs the full check suite and `ilhop doctor --test` additionally drives a live round trip, reporting pass/fail per check.
-- [ ] **DIAG-02**: `ilhop reset` recovers wedged input in one command, and cannot race an in-flight hop (single-flight lock holds across reset).
+- [x] **DIAG-01**: `ilhop doctor` runs the full check suite and `ilhop doctor --test` additionally drives a live round trip, reporting pass/fail per check. **Closed 2026-09-26**: 27/27 with the live round trip (24ms out, 30ms back).
+- [x] **DIAG-02**: `ilhop reset` recovers wedged input in one command, and cannot race an in-flight hop (single-flight lock holds across reset). **Closed 2026-09-26**: reset holds the flock throughout (it used to delete it) and no longer kills `il-jump-listen`; `il-repro --reset-race` proves both race directions (mutation-tested); a real reset run over ssh from the Mac came back clean.
 
 ### Packaging
 
 - [ ] **PKG-01**: `ilhop` installs from a standalone git repo via an install script, on a machine that has never had the `il-*` scripts — no Ryoku checkout required.
 - [ ] **PKG-02**: An uninstall path removes every installed file, systemd user unit, and binding stanza, leaving no residue.
 - [ ] **PKG-03**: A README a stranger can follow end to end: prerequisites, install, the two binds, `doctor`, `reset`, and the known limits (Hyprland + AeroSpace only).
-- [ ] **PKG-04**: The command surface is renamed `il-*` → `ilhop`, with the old names kept working for the duration of this milestone so the author's daily driver never breaks mid-flight.
+- [x] **PKG-04**: The command surface is renamed `il-*` → `ilhop`, with the old names kept working for the duration of this milestone so the author's daily driver never breaks mid-flight. **Closed 2026-09-26**: `bin/ilhop` dispatches to the `il-*` scripts, which keep working under their own names; the binds still call `il-jump` directly.
 
 ## v2 Requirements
 
@@ -85,12 +85,12 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | HOP-05 | Phase 3.1 | Complete |
 | FOCUS-01 | — (dropped) | Out of scope |
 | FOCUS-02 | — (dropped) | Out of scope |
-| DIAG-01 | Phase 4 | Pending |
-| DIAG-02 | Phase 4 | Pending |
+| DIAG-01 | Phase 4 | Complete |
+| DIAG-02 | Phase 4 | Complete |
 | PKG-01 | Phase 5 | Pending |
 | PKG-02 | Phase 5 | Pending |
 | PKG-03 | Phase 5 | Pending |
-| PKG-04 | Phase 4 | Pending |
+| PKG-04 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 12 active (14 written, FOCUS-01/02 dropped 2026-09-26)
