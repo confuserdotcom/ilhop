@@ -19,6 +19,11 @@
 #    went from ~320ms to ~20ms.
 #  - It still needs several moves rather than one big one: a single huge delta
 #    gets swallowed by libinput pointer acceleration and never crosses.
+#  - The return leg (right) only shoves 3. Measured 2026-09-26: the crossing
+#    lands after the FIRST step even with the Mac pointer pinned at its far
+#    left edge, and nothing on this side depends on the overshoot - the
+#    compositor warp below sets the final spot. Left keeps 10: centre_mac's
+#    fixed nudge needs the pointer pinned.
 #  - The burst deliberately OVERSHOOTS so the pointer pins against the far edge
 #    of the destination. Neither machine has a link on that side, so pinning is
 #    safe, and - the point - it is the same landing spot no matter where the
@@ -41,6 +46,7 @@ RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE="$RUN/il-side"          # written by il-side-watch.service
 LOCK="$RUN/il-jump.lock"
 WCACHE="$RUN/il-mac-width"
+CCACHE="$RUN/il-ryuk-centre"  # "x y" of the focused monitor's centre, refreshed off the hot path
 YSOCK="$RUN/.ydotool_socket"
 DBGLOG="$RUN/ilhop-debug.log" # ILHOP_DEBUG-gated refusal log (D-11, D-12)
 DBGARM="$RUN/ilhop-debug.on"  # file present = debug on, without exporting the var
@@ -181,8 +187,21 @@ hypr() { # works even from an ssh session, which has no instance signature
         hyprctl "$@" 2>/dev/null
 }
 
+centre_geom() { # prints "x y" of the focused monitor's centre
+    hypr monitors -j | jq -r '(map(select(.focused))[0] // .[0]) | "\((.x + (.width / .scale) / 2) | floor) \((.y + (.height / .scale) / 2) | floor)"' 2>/dev/null
+}
+
+# Reads the cached centre: asking hyprctl + jq was ~25% of the return leg.
+# ponytail: after a monitor change the cache is stale for one hop (the
+# self-check below refreshes it every jump); invalidate on hotplug if that
+# ever lands the pointer wrong.
 centre_nastralis() {
-    geom=$(hypr monitors -j | jq -r '(map(select(.focused))[0] // .[0]) | "\((.x + (.width / .scale) / 2) | floor) \((.y + (.height / .scale) / 2) | floor)"' 2>/dev/null)
+    geom=""
+    [ -r "$CCACHE" ] && read -r geom < "$CCACHE"
+    case "${geom:-}" in
+        [0-9]*' '[0-9]*) : ;;
+        *) geom=$(centre_geom) ;;
+    esac
     case "${geom:-}" in
         [0-9]*' '[0-9]*) : ;;
         *) geom="1280 720" ;;
@@ -192,12 +211,13 @@ centre_nastralis() {
 
 # Arriving from the Mac, the warp above emits no pointer event, so no client
 # re-sets a cursor image and the pointer stays invisible until real motion
-# (HOP-06). One real +1/-1 nudge redraws it; measured net drift 0-1px.
+# (HOP-06). One real +1 motion redraws it; it moves the pointer 0px after a
+# warp (sub-pixel, measured), so it needs no -1 to cancel it.
 # Only for a genuine arrival: in the give-up rescue the Mac may still hold
 # capture, and real motion there goes to input-leap, not here.
 arrive_nastralis() {
     centre_nastralis
-    ydotool mousemove -- 1 0; ydotool mousemove -- -1 0
+    ydotool mousemove -- 1 0
 }
 
 mac_width() { # cached; only ever asks the Mac on a cold cache
@@ -226,7 +246,7 @@ myseq="$$-$(date +%s%N)"
 printf '%s\n' "$myseq" > "$SEQ"
 
 dbg "dispatch: dir=$dir want=$want CUR=$CUR seq=$myseq"
-shove 10
+if [ "$dir" = left ]; then shove 10; else shove 3; fi
 
 # Drop any modifier still held from the keybind so it cannot stick on the far
 # side. -d 0, or this alone costs ~104ms.
@@ -242,6 +262,8 @@ if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
 # ── detached self-check: did it actually land, and rescue it if not ──────────
 (
     exec 9>&-                        # do not hold the single-flight lock
+    g=$(centre_geom)                 # refresh the centre cache off the hot path
+    case "$g" in [0-9]*' '[0-9]*) printf '%s\n' "$g" > "$CCACHE.$$" && mv -f "$CCACHE.$$" "$CCACHE" ;; esac
     landed 12 && exit 0              # ~1.2s; the side file flips after ~450ms
 
     [ "$(cat "$SEQ" 2>/dev/null)" = "$myseq" ] || { dbg "superseded: seq=$myseq now=$(cat "$SEQ" 2>/dev/null)"; exit 0; }   # a newer jump owns it now
