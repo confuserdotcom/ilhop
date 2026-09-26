@@ -47,7 +47,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [-] ~~**Phase 3: Focus Chain Precision**~~ - DROPPED 2026-09-26: auto-hop on the focus keys retired, `ALT+C` is the only hop key
 - [x] **Phase 3.1: Window-Centre Landing** (INSERTED) - the pointer lands in the window nearest the crossed edge, and that window takes focus
 - [x] **Phase 4: The ilhop Surface** - One name for every command, with `doctor` and `reset` under it and the old names still live
-- [ ] **Phase 5: Standalone Install** - A stranger clones the repo, installs, uses it, and removes it without residue
+- [x] **Phase 5: Standalone Install** - A stranger clones the repo, installs, uses it, and removes it without residue
 
 ## Phase Details
 
@@ -161,7 +161,7 @@ document landing behaviour this phase changes.
   4. A reader who has never seen this project follows the README end to end: prerequisites, install, the two binds, `doctor`, `reset`, and the stated limits (Hyprland + AeroSpace only, this one tested combination).
   5. On the freshly installed machine the author presses the hop bind at the keyboard and it works on the first try, in both directions.
 
-**Plans**: TBD
+**Plans**: done inline 2026-09-26, no plan files. Criteria 2-5 met; criterion 1's working hop in a fresh account could not be shown without a graphical session there, so it was shown on the author's machines after installing from the script. Phase COMPLETE — milestone v1 complete.
 
 ## Requirement Coverage
 

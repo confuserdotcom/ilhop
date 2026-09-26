@@ -1,0 +1,40 @@
+#!/bin/sh
+# Holds ONE ssh session to Ryuk open, running il-jump-listen there, and feeds
+# it the hop requests il-jump-mac writes to $SOCK (HOP-04). A line down a live
+# session costs ~10ms; a fresh ssh per press cost ~80ms before il-jump even ran.
+# Run by launchd (ilhop.hop-pipe, KeepAlive): when the session dies
+# this exits and launchd starts a new one.
+#
+# The socket only exists while the session is live: it is created once
+# il-jump-listen answers "ready", and removed the moment ssh exits. Otherwise
+# il-jump-mac's `nc -U` fails at once and it falls back to a fresh ssh, rather
+# than queueing a press that fires as a surprise hop when a slow connect lands.
+# It dials its own connection (-S none), so it recovers after sleep without
+# waiting for anything else to rebuild the ControlMaster. A cold connect walks
+# ssh-fallback's candidate list and has been measured anywhere from 0.7s to
+# past 10s, hence the long ConnectTimeout.
+# ponytail: a session killed silently by sleep is only noticed after
+# ServerAlive's ~4s; a press in that window is lost. input-leap is itself
+# still reconnecting then, so a hop could not land anyway. Add an ack from
+# il-jump-listen if that ever bites.
+
+# Per-machine settings (ilhop config, written by install.sh).
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+[ -r "$CONF" ] && . "$CONF"
+LINUX_HOST="${ILHOP_LINUX_HOST:-ryuk}"   # ssh alias for the Linux machine
+SOCK="$HOME/.local/state/il-hop.sock"
+IN="$SOCK.in"
+mkdir -p "${SOCK%/*}"
+rm -f "$SOCK" "$IN"
+mkfifo "$IN"
+
+# <> so opening the fifo does not block waiting for nc, which starts later.
+{
+    /usr/bin/ssh -T -S none -o BatchMode=yes -o ConnectTimeout=30 \
+        -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
+        "$LINUX_HOST" .local/bin/il-jump-listen <>"$IN"
+    rm -f "$SOCK"
+    pkill -f "nc -lkU $SOCK"
+} | {
+    read -r ready && [ "$ready" = ready ] && exec /usr/bin/nc -lkU "$SOCK" >"$IN"
+}

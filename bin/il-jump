@@ -41,6 +41,12 @@
 
 set -u
 
+# Per-machine settings (ilhop config, written by install.sh); defaults match
+# the original two machines.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+[ -r "$CONF" ] && . "$CONF"
+MAC_HOST="${ILHOP_MAC_HOST:-mac}"   # ssh alias for the Mac
+
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE="$RUN/il-side"          # written by il-side-watch.service
 LOCK="$RUN/il-jump.lock"
@@ -248,7 +254,7 @@ arrive_nastralis() {
 
 mac_width() { # cached; only ever asks the Mac on a cold cache
     if [ -s "$WCACHE" ]; then cat "$WCACHE"; return; fi
-    w=$(ssh -o BatchMode=yes -o ConnectTimeout=3 mac \
+    w=$(ssh -o BatchMode=yes -o ConnectTimeout=3 "$MAC_HOST" \
         'osascript -e "tell application \"Finder\" to get bounds of window of desktop"' 2>/dev/null \
         | tr -d ' ' | cut -d, -f3)
     case "${w:-}" in

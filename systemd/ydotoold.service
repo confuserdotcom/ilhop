@@ -1,0 +1,11 @@
+[Unit]
+Description=ydotoold - uinput daemon ilhop moves the pointer through
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ydotoold
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

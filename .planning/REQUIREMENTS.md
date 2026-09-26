@@ -30,9 +30,9 @@ Retired 2026-09-26 by the author's decision: `ALT+C` is the only hop key on both
 
 ### Packaging
 
-- [ ] **PKG-01**: `ilhop` installs from a standalone git repo via an install script, on a machine that has never had the `il-*` scripts — no Ryoku checkout required.
-- [ ] **PKG-02**: An uninstall path removes every installed file, systemd user unit, and binding stanza, leaving no residue.
-- [ ] **PKG-03**: A README a stranger can follow end to end: prerequisites, install, the two binds, `doctor`, `reset`, and the known limits (Hyprland + AeroSpace only).
+- [x] **PKG-01**: `ilhop` installs from a standalone git repo via an install script, on a machine that has never had the `il-*` scripts — no Ryoku checkout required. **Closed 2026-09-26**: `install.sh` (Linux + macOS). Fresh-account test on Linux (throwaway user, no `il-*`, not in `input`): installed cleanly and doctor named the exact `/dev/uinput` group cause; no graphical session there, so the working hop was proven on the author's own reinstalled machines, author-verified at the keyboard.
+- [x] **PKG-02**: An uninstall path removes every installed file, systemd user unit, and binding stanza, leaving no residue. **Closed 2026-09-26**: manifest + `ilhop` marker comments; `--uninstall` ends with a residue scan ("no trace left"), verified in the fresh account and on the Mac.
+- [x] **PKG-03**: A README a stranger can follow end to end: prerequisites, install, the two binds, `doctor`, `reset`, and the known limits (Hyprland + AeroSpace only). **Closed 2026-09-26**: `README.md`.
 - [x] **PKG-04**: The command surface is renamed `il-*` → `ilhop`, with the old names kept working for the duration of this milestone so the author's daily driver never breaks mid-flight. **Closed 2026-09-26**: `bin/ilhop` dispatches to the `il-*` scripts, which keep working under their own names; the binds still call `il-jump` directly.
 
 ## v2 Requirements
@@ -87,9 +87,9 @@ Populated during roadmap creation. Every v1 requirement maps to exactly one phas
 | FOCUS-02 | — (dropped) | Out of scope |
 | DIAG-01 | Phase 4 | Complete |
 | DIAG-02 | Phase 4 | Complete |
-| PKG-01 | Phase 5 | Pending |
-| PKG-02 | Phase 5 | Pending |
-| PKG-03 | Phase 5 | Pending |
+| PKG-01 | Phase 5 | Complete |
+| PKG-02 | Phase 5 | Complete |
+| PKG-03 | Phase 5 | Complete |
 | PKG-04 | Phase 4 | Complete |
 
 **Coverage:**
