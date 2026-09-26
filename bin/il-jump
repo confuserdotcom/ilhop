@@ -3,8 +3,12 @@
 #
 #   il-jump            same as `toggle`
 #   il-jump toggle     go to whichever machine does NOT currently have the pointer
-#   il-jump left       go to the Mac          (server.conf: Nastralis.left link)
-#   il-jump right      come back to Nastralis (server.conf: Mac.right link)
+#   il-jump mac        go to the Mac
+#   il-jump linux      come back to this machine
+#   il-jump left|right go that way (whichever machine sits there)
+#
+# ILHOP_MAC_SIDE (config) says which side of this screen the Mac sits on in
+# server.conf: left (default) or right.
 #
 # HOW THE CROSSING WORKS
 # input-leap only switches screens when its own cursor - which it tracks from
@@ -46,6 +50,7 @@ set -u
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
 [ -r "$CONF" ] && . "$CONF"
 MAC_HOST="${ILHOP_MAC_HOST:-mac}"   # ssh alias for the Mac
+MAC_SIDE="${ILHOP_MAC_SIDE:-left}"  # which side of this screen the Mac is on
 
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE="$RUN/il-side"          # written by il-side-watch.service
@@ -74,19 +79,11 @@ RETRY="$RUN/il-jump.retry"    # last-refusal marker: "$dir $tsms" (D-17, 01-06 d
 RETRY_MIN_MS=200
 RETRY_MAX_MS=5000
 
-# Where a hop onto Nastralis lands (HOP-05): the centre of the window nearest
-# the left edge (the one the Mac hands over at) on the focused monitor's
-# workspace - leftmost first, then the one nearest the monitor's vertical
-# middle - plus its address so it can take focus. With no window, the monitor
-# centre. Input: hyprctl's monitors and clients JSON, slurped. Output: "x y [address]".
-AIM_JQ='(.[0] | map(select(.focused))[0] // .[0]) as $m
-    | ($m.y + ($m.height / $m.scale) / 2) as $cy
-    | [.[1][] | select(.workspace.id == $m.activeWorkspace.id and .mapped and (.hidden | not))]
-    | if length == 0 then "\(($m.x + ($m.width / $m.scale) / 2) | floor) \($cy | floor)"
-      else min_by([.at[0], ((.at[1] + .size[1] / 2) - $cy | fabs)])
-      | "\((.at[0] + .size[0] / 2) | floor) \((.at[1] + .size[1] / 2) | floor) \(.address)" end'
+# Compositor calls (wm_aim, wm_warp, wm_focus_warp) live in the adapter.
+# install.sh puts il-wm next to this script; resolve links only if not.
+if [ -r "${0%/*}/il-wm" ]; then . "${0%/*}/il-wm"; else self=$(readlink -f "$0"); . "${self%/*}/il-wm"; fi
 # Test seam for il-repro --aim: run just the pick above on JSON from stdin.
-[ -n "${IL_JUMP_AIM_TEST:-}" ] && exec jq -rs "$AIM_JQ"
+[ -n "${IL_JUMP_AIM_TEST:-}" ] && exec jq -rs --arg mac "$MAC_SIDE" "$AIM_JQ"
 
 note() { notify-send -a il-jump "il-jump" "$1" 2>/dev/null || true; }
 die()  { dbg "die: $1"; note "$1"; echo "il-jump: $1" >&2; exit 1; }
@@ -150,12 +147,15 @@ read_side() {
 # ── which way? ───────────────────────────────────────────────────────────────
 read_side
 case "${1:-toggle}" in
-    toggle) if [ "$CUR" = mac ]; then dir=right; else dir=left; fi ;;
-    left)   dir=left  ;;
-    right)  dir=right ;;
-    *) dbg "usage: bad-arg='${1:-}'"; echo "usage: il-jump [toggle|left|right]" >&2; exit 2 ;;
+    toggle) if [ "$CUR" = mac ]; then want=nastralis; else want=mac; fi ;;
+    mac)    want=mac ;;
+    linux)  want=nastralis ;;
+    left|right) if [ "$1" = "$MAC_SIDE" ]; then want=mac; else want=nastralis; fi ;;
+    *) dbg "usage: bad-arg='${1:-}'"; echo "usage: il-jump [toggle|mac|linux|left|right]" >&2; exit 2 ;;
 esac
-if [ "$dir" = left ]; then step=-800; want=mac; else step=800; want=nastralis; fi
+# dir = the way the pointer travels; the far side of each screen has no link.
+if [ "$want" = mac ]; then dir=$MAC_SIDE; elif [ "$MAC_SIDE" = left ]; then dir=right; else dir=left; fi
+if [ "$dir" = left ]; then step=-800; else step=800; fi
 
 # Already there. Happens when ALT+H fires at the edge while the pointer is
 # already on the Mac; shoving again would only bury it further off-screen -
@@ -202,12 +202,7 @@ landed() { # $1 = how many 100ms ticks to wait for the side file to flip
     return 1
 }
 
-hypr() { # works even from an ssh session, which has no instance signature
-    HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}" \
-        hyprctl "$@" 2>/dev/null
-}
-
-aim_geom() { hypr -j --batch 'monitors; clients' | jq -rs "$AIM_JQ" 2>/dev/null; }
+aim_geom() { wm_aim; }
 
 # Reads the cached aim: asking hyprctl + jq live costs ~8ms of a ~48ms leg.
 # ponytail: the cache is as fresh as the last jump (the self-check below
@@ -232,7 +227,7 @@ read_aim() {
 
 centre_nastralis() {
     read_aim
-    hypr dispatch "hl.dsp.cursor.move({ x = $ax, y = $ay })" >/dev/null
+    wm_warp "$ax" "$ay"
 }
 
 # A genuine arrival: warp onto the aimed window and give it focus (follow_mouse
@@ -244,11 +239,7 @@ centre_nastralis() {
 # capture, and real motion there goes to input-leap, not here.
 arrive_nastralis() {
     read_aim
-    if [ -n "$addr" ]; then
-        hypr --batch "dispatch hl.dsp.focus({ window = \"address:$addr\" }) ; dispatch hl.dsp.cursor.move({ x = $ax, y = $ay })" >/dev/null
-    else
-        hypr dispatch "hl.dsp.cursor.move({ x = $ax, y = $ay })" >/dev/null
-    fi
+    if [ -n "$addr" ]; then wm_focus_warp "$addr" "$ax" "$ay"; else wm_warp "$ax" "$ay"; fi
     ydotool mousemove -- 1 0
 }
 
@@ -265,7 +256,8 @@ mac_width() { # cached; only ever asks the Mac on a cold cache
 }
 
 centre_mac() {
-    # The pointer starts pinned against the Mac's left edge and a single
+    # The pointer starts pinned against the Mac's far edge (its left edge when
+    # the Mac is on the left, its right edge otherwise) and a single
     # ydotool delta lands at 2x after accel (measured 2026-09-26: 100->184,
     # 180->345, 430->859, 550->1099), so half the target x lands on it. The
     # target is the centre of the Mac window nearest this edge, which
@@ -276,7 +268,11 @@ centre_mac() {
     tx=""
     [ -r "$MCACHE" ] && read -r tx < "$MCACHE"
     case "${tx:-}" in ''|*[!0-9]*) tx=$(( $(mac_width) / 2 )) ;; esac
-    ydotool mousemove -- "$(( tx / 2 ))" 0
+    if [ "$MAC_SIDE" = left ]; then
+        ydotool mousemove -- "$(( tx / 2 ))" 0
+    else
+        ydotool mousemove -- "-$(( ($(mac_width) - tx) / 2 ))" 0
+    fi
 }
 
 # ── go ───────────────────────────────────────────────────────────────────────
@@ -287,7 +283,7 @@ myseq="$$-$(date +%s%N)"
 printf '%s\n' "$myseq" > "$SEQ"
 
 dbg "dispatch: dir=$dir want=$want CUR=$CUR seq=$myseq"
-if [ "$dir" = left ]; then shove 10; else shove 3; fi
+if [ "$want" = mac ]; then shove 10; else shove 3; fi
 
 # Drop any modifier still held from the keybind so it cannot stick on the far
 # side. -d 0, or this alone costs ~104ms.
@@ -298,7 +294,7 @@ ydotool key -d 0 125:0 126:0 29:0 97:0 56:0 100:0 42:0 54:0 2>/dev/null || true
 # what made this feel laggy, so the check runs detached instead. If the crossing
 # did fail, the nudge only slides the pointer along this screen and the check
 # below puts it back.
-if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
+if [ "$want" = mac ]; then centre_mac; else arrive_nastralis; fi
 
 # ── detached self-check: did it actually land, and rescue it if not ──────────
 (
@@ -312,7 +308,7 @@ if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
 
     shove 14                         # one harder retry
     if landed 15; then
-        if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
+        if [ "$want" = mac ]; then centre_mac; else arrive_nastralis; fi
         exit 0
     fi
 

@@ -46,8 +46,15 @@ sleep 3
 echo "il-reset: pulling the pointer back to this machine"
 i=0; while [ "$i" -lt 14 ]; do ydotool mousemove -- 800 0; i=$((i + 1)); done
 sleep 1
-HIS="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}"
-HYPRLAND_INSTANCE_SIGNATURE="$HIS" hyprctl dispatch "hl.dsp.cursor.move({ x = 1280, y = 720 })" >/dev/null 2>&1
+# Subshell: a broken adapter setting must not stop the reset from finishing.
+(
+    CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+    [ -r "$CONF" ] && . "$CONF"
+    # install.sh puts il-wm next to this script; resolve links only if not.
+    if [ -r "${0%/*}/il-wm" ]; then . "${0%/*}/il-wm"; else self=$(readlink -f "$0"); . "${self%/*}/il-wm"; fi
+    set -- $(wm_aim)
+    wm_warp "${1:-1280}" "${2:-720}"
+) >/dev/null 2>&1
 
 printf 'il-reset: done. pointer is on: %s\n' "$(cat "$RUN/il-side" 2>/dev/null || echo '?')"
 echo "il-reset: modifiers held: '$("$HOME/.local/bin/il-heldmods" 2>/dev/null | tr '\n' ' ')' (empty is good)"

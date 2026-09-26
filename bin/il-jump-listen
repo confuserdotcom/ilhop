@@ -21,7 +21,7 @@ RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 while read -r d x; do
     case "$d" in
-        right|toggle) "$HOME/.local/bin/il-jump" "$d" </dev/null ;;
+        linux|mac|toggle|left|right) "$HOME/.local/bin/il-jump" "$d" </dev/null ;;
         aim) case "$x" in ''|*[!0-9]*) ;; *) printf '%s\n' "$x" > "$RUN/il-mac-aim" ;; esac ;;
     esac
 done

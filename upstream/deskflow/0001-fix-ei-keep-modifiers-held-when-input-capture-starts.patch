@@ -1,4 +1,4 @@
-From d2773622e376859634f8f8dd9beaa8468dd03e3d Mon Sep 17 00:00:00 2001
+From 14b7ba09696a9ce5508b68f0d18689f55dd13920 Mon Sep 17 00:00:00 2001
 From: nastralis <alaerattale001@gmail.com>
 Date: Sat, 26 Sep 2026 22:13:09 +0000
 Subject: [PATCH] fix(ei): keep modifiers held when input capture starts
@@ -6,16 +6,18 @@ Subject: [PATCH] fix(ei): keep modifiers held when input capture starts
 A modifier pressed before capture began never arrives as an EI key
 event, and clearStaleModifiers() zeroed the depressed state, so holding
 Alt across the screen edge sent a bare key to the client. Re-apply the
-modifier keys the kernel reports as held (EVIOCGKEY).
+modifier keys the kernel reports as held (EVIOCGKEY). The evdev nodes
+stay open between switches: opening and closing them costs ~300ms on
+a laptop with 27 nodes.
 ---
- src/lib/platform/EiKeyState.cpp            | 61 ++++++++++++++++++++++
- src/lib/platform/EiKeyState.h              |  4 ++
- src/unittests/platform/EiKeyStateTests.cpp | 41 +++++++++++++++
+ src/lib/platform/EiKeyState.cpp            | 68 ++++++++++++++++++++++
+ src/lib/platform/EiKeyState.h              | 13 +++++
+ src/unittests/platform/EiKeyStateTests.cpp | 41 +++++++++++++
  src/unittests/platform/EiKeyStateTests.h   |  1 +
- 4 files changed, 107 insertions(+)
+ 4 files changed, 123 insertions(+)
 
 diff --git a/src/lib/platform/EiKeyState.cpp b/src/lib/platform/EiKeyState.cpp
-index 69bf61c4..96f46eeb 100644
+index 69bf61c4..5cd0e26e 100644
 --- a/src/lib/platform/EiKeyState.cpp
 +++ b/src/lib/platform/EiKeyState.cpp
 @@ -13,10 +13,20 @@
@@ -39,7 +41,19 @@ index 69bf61c4..96f46eeb 100644
  namespace deskflow {
  
  EiKeyState::EiKeyState(EiScreen *screen, IEventQueue *events)
-@@ -373,5 +383,56 @@ void EiKeyState::clearStaleModifiers()
+@@ -84,6 +94,11 @@ void EiKeyState::init(int fd, size_t len)
+ 
+ EiKeyState::~EiKeyState()
+ {
++  for (const auto &[node, fd] : m_evdevFds) {
++    if (fd >= 0) {
++      close(fd);
++    }
++  }
+   xkb_context_unref(m_xkb);
+   xkb_keymap_unref(m_xkbKeymap);
+   xkb_state_unref(m_xkbState);
+@@ -373,5 +388,58 @@ void EiKeyState::clearStaleModifiers()
    }
    m_xkbState = xkb_state_new(m_xkbKeymap);
    xkb_state_update_mask(m_xkbState, 0, 0, lockedMods, 0, 0, lockedLayout);
@@ -64,28 +78,30 @@ index 69bf61c4..96f46eeb 100644
 +  std::array<unsigned long, (KEY_MAX + bitsPerLong) / bitsPerLong> held{};
 +
 +  // Needs read access to /dev/input (usually the input group). Without it
-+  // nothing is re-applied and the state is simply cleared, as before.
-+  DIR *dir = opendir("/dev/input");
-+  if (dir == nullptr) {
-+    return keys;
-+  }
-+  while (const dirent *entry = readdir(dir)) {
-+    if (strncmp(entry->d_name, "event", 5) != 0) {
-+      continue;
-+    }
-+    const int fd = openat(dirfd(dir), entry->d_name, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-+    if (fd < 0) {
-+      continue;
-+    }
-+    std::array<unsigned long, held.size()> state{};
-+    if (ioctl(fd, EVIOCGKEY(sizeof(state)), state.data()) >= 0) {
-+      for (std::size_t i = 0; i < held.size(); i++) {
-+        held[i] |= state[i];
++  // nothing is re-applied and the state is simply cleared, as before. Only
++  // nodes not seen before are opened; the rest stay open between calls.
++  if (DIR *dir = opendir("/dev/input"); dir != nullptr) {
++    while (const dirent *entry = readdir(dir)) {
++      if (strncmp(entry->d_name, "event", 5) != 0 || m_evdevFds.count(entry->d_name) != 0) {
++        continue;
 +      }
++      m_evdevFds[entry->d_name] = openat(dirfd(dir), entry->d_name, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 +    }
-+    close(fd);
++    closedir(dir);
 +  }
-+  closedir(dir);
++
++  for (auto it = m_evdevFds.begin(); it != m_evdevFds.end();) {
++    std::array<unsigned long, held.size()> state{};
++    if (it->second >= 0 && ioctl(it->second, EVIOCGKEY(sizeof(state)), state.data()) < 0) {
++      close(it->second); // unplugged; reopened if the node comes back
++      it = m_evdevFds.erase(it);
++      continue;
++    }
++    for (std::size_t i = 0; i < held.size(); i++) {
++      held[i] |= state[i];
++    }
++    ++it;
++  }
 +
 +  for (const auto key : s_modifierKeys) {
 +    if ((held[key / bitsPerLong] >> (key % bitsPerLong)) & 1) {
@@ -97,27 +113,36 @@ index 69bf61c4..96f46eeb 100644
  }
  } // namespace deskflow
 diff --git a/src/lib/platform/EiKeyState.h b/src/lib/platform/EiKeyState.h
-index 8f4b941d..cef0cae3 100644
+index 8f4b941d..d213b755 100644
 --- a/src/lib/platform/EiKeyState.h
 +++ b/src/lib/platform/EiKeyState.h
-@@ -10,6 +10,7 @@
+@@ -10,6 +10,9 @@
  #include "deskflow/KeyState.h"
  #include "platform/EiScreen.h"
  
++#include <map>
++#include <string>
 +#include <vector>
  #include <xkbcommon/xkbcommon.h>
  
  struct xkb_context;
-@@ -39,6 +40,9 @@ public:
+@@ -38,6 +41,16 @@ public:
+   void updateLockedModifiers(xkb_mod_mask_t lockedMods);
    void clearStaleModifiers() override;
  
- protected:
++protected:
 +  //! Linux keycodes of the modifier keys physically held right now
 +  virtual std::vector<std::uint32_t> heldModifierKeys() const;
 +
++private:
++  //! /dev/input/eventN -> open fd (-1: could not open). Kept open because
++  //! opening and closing evdev nodes costs milliseconds each (~300ms for a
++  //! laptop with 27 nodes) and heldModifierKeys() runs on every screen switch.
++  mutable std::map<std::string, int> m_evdevFds;
++
+ protected:
    // KeyState overrides
    void getKeyMap(KeyMap &keyMap) override;
-   void fakeKey(const Keystroke &keystroke) override;
 diff --git a/src/unittests/platform/EiKeyStateTests.cpp b/src/unittests/platform/EiKeyStateTests.cpp
 index fadb17fe..af2d63bd 100644
 --- a/src/unittests/platform/EiKeyStateTests.cpp

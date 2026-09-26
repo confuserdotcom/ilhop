@@ -1,5 +1,5 @@
 diff --git a/src/lib/platform/EiKeyState.cpp b/src/lib/platform/EiKeyState.cpp
-index e8f3e9e..91f7ad6 100644
+index e8f3e9e5..a225be8b 100644
 --- a/src/lib/platform/EiKeyState.cpp
 +++ b/src/lib/platform/EiKeyState.cpp
 @@ -22,6 +22,11 @@
@@ -14,7 +14,28 @@ index e8f3e9e..91f7ad6 100644
  #include <unistd.h>
  
  #include <xkbcommon/xkbcommon.h>
-@@ -278,4 +283,55 @@ void EiKeyState::update_xkb_state(uint32_t keyval, bool is_pressed)
+@@ -38,6 +43,9 @@ EiKeyState::EiKeyState(EiScreen* screen, IEventQueue* events) :
+     // one during initial startup - even before we know what our actual keymap is.
+     // Once we get the actual keymap from EIS, we swap it out so hopefully that's enough.
+     init_default_keymap();
++
++    // Open the evdev nodes now, so the first screen switch does not pay for it.
++    sync_held_modifiers();
+ }
+ 
+ void EiKeyState::init_default_keymap()
+@@ -93,6 +101,10 @@ void EiKeyState::init(int fd, size_t len)
+ 
+ EiKeyState::~EiKeyState()
+ {
++    for (auto& entry : evdev_fds_) {
++        if (entry.second >= 0)
++            close(entry.second);
++    }
+     xkb_context_unref(xkb_);
+     xkb_keymap_unref(xkb_keymap_);
+     xkb_state_unref(xkb_state_);
+@@ -278,4 +290,61 @@ void EiKeyState::update_xkb_state(uint32_t keyval, bool is_pressed)
      xkb_state_update_key(xkb_state_, keyval, is_pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
  }
  
@@ -39,20 +60,26 @@ index e8f3e9e..91f7ad6 100644
 +    constexpr std::size_t bits = 8 * sizeof(unsigned long);
 +    unsigned long held[(KEY_MAX + bits) / bits] = {};
 +
++    // Open nodes we have not seen yet (only new devices after the first call).
 +    if (DIR* dir = opendir("/dev/input")) {
 +        while (dirent* e = readdir(dir)) {
-+            if (strncmp(e->d_name, "event", 5) != 0)
++            if (strncmp(e->d_name, "event", 5) != 0 || evdev_fds_.count(e->d_name))
 +                continue;
-+            int fd = openat(dirfd(dir), e->d_name, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-+            if (fd < 0)
-+                continue;
-+            unsigned long keys[sizeof(held) / sizeof(held[0])] = {};
-+            if (ioctl(fd, EVIOCGKEY(sizeof(keys)), keys) >= 0)
-+                for (std::size_t i = 0; i < sizeof(held) / sizeof(held[0]); i++)
-+                    held[i] |= keys[i];
-+            close(fd);
++            evdev_fds_[e->d_name] = openat(dirfd(dir), e->d_name, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 +        }
 +        closedir(dir);
++    }
++
++    for (auto it = evdev_fds_.begin(); it != evdev_fds_.end();) {
++        unsigned long keys[sizeof(held) / sizeof(held[0])] = {};
++        if (it->second >= 0 && ioctl(it->second, EVIOCGKEY(sizeof(keys)), keys) < 0) {
++            close(it->second);          // unplugged; reopened if the node comes back
++            it = evdev_fds_.erase(it);
++            continue;
++        }
++        for (std::size_t i = 0; i < sizeof(held) / sizeof(held[0]); i++)
++            held[i] |= keys[i];
++        ++it;
 +    }
 +
 +    auto locked = xkb_state_serialize_mods(xkb_state_, XKB_STATE_MODS_LOCKED);
@@ -71,10 +98,20 @@ index e8f3e9e..91f7ad6 100644
 +
  } // namespace inputleap
 diff --git a/src/lib/platform/EiKeyState.h b/src/lib/platform/EiKeyState.h
-index 0a01e12..c24110b 100644
+index 0a01e123..9b941181 100644
 --- a/src/lib/platform/EiKeyState.h
 +++ b/src/lib/platform/EiKeyState.h
-@@ -42,6 +42,9 @@ public:
+@@ -20,6 +20,9 @@
+ #include "platform/EiScreen.h"
+ #include "inputleap/KeyState.h"
+ 
++#include <map>
++#include <string>
++
+ struct xkb_context;
+ struct xkb_keymap;
+ struct xkb_state;
+@@ -42,6 +45,9 @@ public:
      void pollPressedKeys(KeyButtonSet& pressedKeys) const override;
      KeyID map_key_from_keyval(std::uint32_t keyval) const;
      void update_xkb_state(std::uint32_t keyval, bool is_pressed);
@@ -84,8 +121,20 @@ index 0a01e12..c24110b 100644
  
  protected:
      // KeyState overrides
+@@ -57,6 +63,11 @@ private:
+     xkb_context* xkb_ = nullptr;
+     xkb_keymap* xkb_keymap_ = nullptr;
+     xkb_state* xkb_state_ = nullptr;
++
++    // /dev/input/eventN -> open fd (-1: could not open). Kept open because
++    // opening and closing evdev nodes costs milliseconds each (~300ms for a
++    // typical laptop's 27 nodes) and this is read on every screen switch.
++    std::map<std::string, int> evdev_fds_;
+ };
+ 
+ } // namespace inputleap
 diff --git a/src/lib/platform/EiScreen.cpp b/src/lib/platform/EiScreen.cpp
-index b320de8..7924d67 100644
+index b320de85..7924d675 100644
 --- a/src/lib/platform/EiScreen.cpp
 +++ b/src/lib/platform/EiScreen.cpp
 @@ -359,7 +359,10 @@ bool EiScreen::canLeave() {
