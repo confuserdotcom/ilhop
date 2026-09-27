@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# Keeps Linux's landing aim fresh (HOP-05). Run on every focus change (by
-# AeroSpace's on-focus-changed, or a yabai window_focused signal), so a window closed or moved after the last alt-c does not leave the
+# Keeps Ryuk's landing aim fresh (HOP-05). Run by AeroSpace on every focus
+# change, so a window closed or moved after the last alt-c does not leave the
 # next Ryuk->Mac hop aiming at a spot that is now empty (the ponytail in
 # il-jump-mac). Same pick as il-jump-mac: centre x of the window nearest the
 # right edge on the focused workspace, screen centre if there is none.
@@ -14,14 +14,22 @@
 
 SOCK="$HOME/.local/state/il-hop.sock"
 [ -S "$SOCK" ] || exit 0
-CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
-[ -r "$CONF" ] && . "$CONF"
-. "$HOME/.local/bin/il-mac-wm"
 
 # AeroSpace fires the hook before it has re-laid the tiles out.
 sleep 0.3
 
-set -- $(mac_pick)
-x=${2:-}
+x=$(/usr/bin/osascript -l JavaScript -e '
+function run(ids) {
+    ObjC.import("CoreGraphics"); ObjC.import("AppKit");
+    const want = new Set(ids.map(Number));
+    const ws = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(
+        $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0)))
+        .filter(w => want.has(w.kCGWindowNumber));
+    if (!ws.length) return Math.round($.NSScreen.mainScreen.frame.size.width / 2);
+    const r = w => w.kCGWindowBounds.X + w.kCGWindowBounds.Width;
+    const w = ws.reduce((a, b) => r(b) > r(a) ? b : a);
+    return Math.round(w.kCGWindowBounds.X + w.kCGWindowBounds.Width / 2);
+}' $(aerospace list-windows --workspace focused --format '%{window-id}') 2>/dev/null)
+
 [ -n "$x" ] && printf 'aim %s\n' "$x" | /usr/bin/nc -U "$SOCK" 2>/dev/null
 exit 0

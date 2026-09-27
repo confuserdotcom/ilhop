@@ -810,16 +810,14 @@ mode_aim() {
     win() { # $1=address $2=ws $3=x $4=y $5=w $6=h
         printf '{"address":"%s","workspace":{"id":%s},"at":[%s,%s],"size":[%s,%s],"mapped":true,"hidden":false}' "$@"
     }
-    aim_case() { # $1=label $2=monitors $3=clients $4=expected [$5=Mac side]
-        got=$(printf '%s %s' "$2" "$3" | ILHOP_MAC_SIDE="${5:-left}" IL_JUMP_AIM_TEST=1 "$HOME/.local/bin/il-jump" 2>&1)
+    aim_case() { # $1=label $2=monitors $3=clients $4=expected
+        got=$(printf '%s %s' "$2" "$3" | IL_JUMP_AIM_TEST=1 "$HOME/.local/bin/il-jump" 2>&1)
         [ "$got" = "$4" ] && pass "aim[$1]: $got" || fail "aim[$1]: expected '$4', got '$got'"
     }
     aim_case "two side by side" "$mon" "[$(win 0xR 1 1280 0 1280 1440),$(win 0xL 1 0 0 1280 1440)]" "640 720 0xL"
     aim_case "stacked left column" "$mon" "[$(win 0xT 1 0 0 1280 400),$(win 0xB 1 0 400 1280 1040),$(win 0xR 1 1280 0 1280 1440)]" "640 920 0xB"
     aim_case "one window" "$mon" "[$(win 0xA 1 65 18 2477 1404)]" "1303 720 0xA"
     aim_case "other workspace only" "$mon" "[$(win 0xO 2 0 0 1280 1440)]" "1280 720"
-    aim_case "Mac on the right" "$mon" "[$(win 0xR 1 1280 0 1280 1440),$(win 0xL 1 0 0 1280 1440)]" "1920 720 0xR" right
-    aim_case "Mac on the right, stacked" "$mon" "[$(win 0xL 1 0 0 1280 1440),$(win 0xT 1 1280 0 1280 400),$(win 0xB 1 1280 400 1280 1040)]" "1920 920 0xB" right
     aim_case "scaled monitor, empty" '[{"x":0,"y":0,"width":2560,"height":1440,"scale":2,"focused":true,"activeWorkspace":{"id":1}}]' "[]" "640 360"
 }
 
