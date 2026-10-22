@@ -44,7 +44,13 @@ systemctl --user restart il-side-watch.service 2>/dev/null
 sleep 3
 
 echo "il-reset: pulling the pointer back to this machine"
-i=0; while [ "$i" -lt 14 ]; do ydotool mousemove -- 800 0; i=$((i + 1)); done
+# Shove AWAY from the Mac: rightward when it sits on the left, leftward when
+# it sits on the right - a fixed rightward shove would push a Mac-right
+# pointer onto the Mac. `il-jump side` takes no lock and moves nothing; any
+# failure keeps the rightward shove.
+home=800
+[ "$("$HOME/.local/bin/il-jump" side 2>/dev/null)" = right ] && home=-800
+i=0; while [ "$i" -lt 14 ]; do ydotool mousemove -- "$home" 0; i=$((i + 1)); done
 sleep 1
 HIS="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}"
 HYPRLAND_INSTANCE_SIGNATURE="$HIS" hyprctl dispatch "hl.dsp.cursor.move({ x = 1280, y = 720 })" >/dev/null 2>&1

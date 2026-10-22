@@ -3,8 +3,18 @@
 #
 #   il-jump            same as `toggle`
 #   il-jump toggle     go to whichever machine does NOT currently have the pointer
-#   il-jump left       go to the Mac          (server.conf: Nastralis.left link)
-#   il-jump right      come back to Nastralis (server.conf: Mac.right link)
+#   il-jump mac        go to the Mac
+#   il-jump linux      come back to Nastralis
+#   il-jump left|right go that way (whichever machine sits there)
+#   il-jump side       print which side of this screen the Mac is on
+#
+# WHICH SIDE THE MAC IS ON
+# Never configured. It is read live, on every hop, from input-leap's own
+# server.conf: this screen's single left or right link in `section: links`
+# (one awk, ~2ms). input-leap needs those links to match the desk for the
+# physical mouse anyway, so they are the one source of truth; `ilhop side`
+# rewrites them. A conf with no usable link falls back to "the Mac is on the
+# left" and never blocks the hop.
 #
 # HOW THE CROSSING WORKS
 # input-leap only switches screens when its own cursor - which it tracks from
@@ -19,19 +29,23 @@
 #    went from ~320ms to ~20ms.
 #  - It still needs several moves rather than one big one: a single huge delta
 #    gets swallowed by libinput pointer acceleration and never crosses.
-#  - The return leg (right) only shoves 3. Measured 2026-09-26: the crossing
+#  - The leg back to Linux only shoves 3. Measured 2026-09-26: the crossing
 #    lands after the FIRST step even with the Mac pointer pinned at its far
-#    left edge, and nothing on this side depends on the overshoot - the
-#    compositor warp below sets the final spot. Left keeps 10: centre_mac's
-#    fixed nudge needs the pointer pinned.
+#    edge, and nothing on this side depends on the overshoot - the
+#    compositor warp below sets the final spot. The leg toward the Mac keeps
+#    10: centre_mac's fixed nudge needs the pointer pinned. The count follows
+#    the destination, not the direction, so it holds whichever side the Mac
+#    is on.
 #  - The burst deliberately OVERSHOOTS so the pointer pins against the far edge
 #    of the destination. Neither machine has a link on that side, so pinning is
 #    safe, and - the point - it is the same landing spot no matter where the
 #    pointer started. That is what lets the recentre be one fixed nudge rather
 #    than a guess.
-#  - Recentring the Mac is ONE nudge of half the target x (ydotool deltas land
-#    at 2x after acceleration; measured 430 -> 859, see centre_mac). It must be a single move; several small ones build up
-#    acceleration and shoot past the right edge, bouncing control back here.
+#  - Recentring the Mac is ONE nudge of half the distance to the target x
+#    (ydotool deltas land at 2x after acceleration; measured 430 -> 859, see
+#    centre_mac). It must be a single move; several small ones build up
+#    acceleration and shoot past the edge facing Linux, bouncing control back
+#    here.
 #  - Recentring Nastralis uses the compositor, which is exact and free. Safe
 #    because on the server it is the portal that watches the edge barrier, not
 #    input-leap's own cursor, so warping does not desync anything.
@@ -46,6 +60,8 @@ set -u
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
 [ -r "$CONF" ] && . "$CONF"
 MAC_HOST="${ILHOP_MAC_HOST:-mac}"   # ssh alias for the Mac
+SCREEN="${ILHOP_SCREEN:-$(uname -n)}"   # this machine's input-leap screen name (--name)
+SERVERCONF="$HOME/.config/InputLeap/server.conf"   # its links say where the Mac sits
 
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE="$RUN/il-side"          # written by il-side-watch.service
@@ -75,18 +91,90 @@ RETRY_MIN_MS=200
 RETRY_MAX_MS=5000
 
 # Where a hop onto Nastralis lands (HOP-05): the centre of the window nearest
-# the left edge (the one the Mac hands over at) on the focused monitor's
-# workspace - leftmost first, then the one nearest the monitor's vertical
-# middle - plus its address so it can take focus. With no window, the monitor
-# centre. Input: hyprctl's monitors and clients JSON, slurped. Output: "x y [address]".
+# the edge the Mac hands over at on the focused monitor's workspace - with
+# the Mac on the left, the leftmost window by its left edge; on the right,
+# the rightmost by its right edge (`--arg side`) - then the one nearest the
+# monitor's vertical middle, plus its address so it can take focus. With no
+# window, the monitor centre. Input: hyprctl's monitors and clients JSON,
+# slurped. Output: "x y [address]".
 AIM_JQ='(.[0] | map(select(.focused))[0] // .[0]) as $m
     | ($m.y + ($m.height / $m.scale) / 2) as $cy
     | [.[1][] | select(.workspace.id == $m.activeWorkspace.id and .mapped and (.hidden | not))]
     | if length == 0 then "\(($m.x + ($m.width / $m.scale) / 2) | floor) \($cy | floor)"
-      else min_by([.at[0], ((.at[1] + .size[1] / 2) - $cy | fabs)])
+      else min_by([(if $side == "right" then -(.at[0] + .size[0]) else .at[0] end), ((.at[1] + .size[1] / 2) - $cy | fabs)])
       | "\((.at[0] + .size[0] / 2) | floor) \((.at[1] + .size[1] / 2) | floor) \(.address)" end'
-# Test seam for il-repro --aim: run just the pick above on JSON from stdin.
-[ -n "${IL_JUMP_AIM_TEST:-}" ] && exec jq -rs "$AIM_JQ"
+
+# Which side of this screen the Mac is on, from server.conf's links (D-1).
+# Prints left or right only when this screen's block has exactly one
+# left/right link; anything else (no links section, no block for this
+# screen, both sides linked) prints nothing and the caller falls back.
+#  - `#` comments are stripped; only `section: links` .. `end` counts.
+#  - A line ending in `:` with no `=` opens a screen block; it is this
+#    screen's when its name, whitespace and colon removed, equals $me
+#    case-insensitively - compared as strings, never as a regex built from
+#    a name read out of the file.
+#  - Each `=` line in that block gives a direction: the text before `=`,
+#    with any `(a,b)` range and whitespace removed, lowercased.
+# Measured ~1.8ms per call with BSD awk during planning.
+SIDE_AWK='{ sub(/#.*/, ""); l = tolower($0); gsub(/[ \t\r]/, "", l) }
+    l == "section:links" { inl = 1; blk = 0; next }
+    !inl { next }
+    l == "end" { inl = 0; blk = 0; next }
+    l !~ /=/ && l ~ /:$/ { blk = (substr(l, 1, length(l) - 1) == tolower(me)); next }
+    blk && l ~ /=/ { d = l; sub(/=.*/, "", d); sub(/\(.*/, "", d)
+        if (d == "left" || d == "right") { c++; s = d } }
+    END { if (c == 1) print s }'
+
+# Sets MAC_SIDE; returns 1 and assumes left when the conf cannot say (D-2).
+mac_side() {
+    MAC_SIDE=$(awk -v me="$SCREEN" "$SIDE_AWK" "$SERVERCONF" 2>/dev/null)
+    case "$MAC_SIDE" in left|right) return 0 ;; esac
+    MAC_SIDE=left
+    return 1
+}
+
+# Sets want (the machine the pointer goes to), dir (the way it travels),
+# step and burst from the verb in $1 and the cached side in $CUR; returns 2
+# on a verb it does not know. left|right mean "go that way" (D-3). The far
+# side of each screen has no link, so dir is the Mac's side going there and
+# the opposite coming back; the shove count follows the destination.
+resolve() {
+    case "$1" in
+        toggle) if [ "$CUR" = mac ]; then want=nastralis; else want=mac; fi ;;
+        mac)    want=mac ;;
+        linux)  want=nastralis ;;
+        left|right) if [ "$1" = "$MAC_SIDE" ]; then want=mac; else want=nastralis; fi ;;
+        *) return 2 ;;
+    esac
+    if [ "$want" = mac ]; then dir=$MAC_SIDE; burst=10
+    elif [ "$MAC_SIDE" = left ]; then dir=right; burst=3
+    else dir=left; burst=3; fi
+    if [ "$dir" = left ]; then step=-800; else step=800; fi
+}
+
+# ── test seams and the side query: before the lock, never any motion ────────
+# il-repro --aim: run just the pick above on JSON from stdin. left|right pins
+# the side; any other value reads the live one.
+if [ -n "${IL_JUMP_AIM_TEST:-}" ]; then
+    case "$IL_JUMP_AIM_TEST" in left|right) MAC_SIDE=$IL_JUMP_AIM_TEST ;; *) mac_side ;; esac
+    exec jq -rs --arg side "$MAC_SIDE" "$AIM_JQ"
+fi
+# `il-jump side`: il-jump-listen and il-reset ask this, so it must never take
+# the lock or touch ydotool.
+if [ "${1:-}" = side ]; then
+    mac_side || echo "il-jump: no single left/right link for '$SCREEN' in $SERVERCONF; assuming the Mac is on the left" >&2
+    printf '%s\n' "$MAC_SIDE"
+    exit 0
+fi
+# il-repro --resolve: IL_JUMP_RESOLVE_TEST=<cached side> prints the decision
+# for the verb as "want dir step burst" and stops.
+if [ -n "${IL_JUMP_RESOLVE_TEST:-}" ]; then
+    CUR=$IL_JUMP_RESOLVE_TEST
+    mac_side
+    resolve "${1:-toggle}" || exit 2
+    printf '%s %s %s %s\n' "$want" "$dir" "$step" "$burst"
+    exit 0
+fi
 
 note() { notify-send -a il-jump "il-jump" "$1" 2>/dev/null || true; }
 die()  { dbg "die: $1"; note "$1"; echo "il-jump: $1" >&2; exit 1; }
@@ -149,13 +237,10 @@ read_side() {
 
 # ── which way? ───────────────────────────────────────────────────────────────
 read_side
-case "${1:-toggle}" in
-    toggle) if [ "$CUR" = mac ]; then dir=right; else dir=left; fi ;;
-    left)   dir=left  ;;
-    right)  dir=right ;;
-    *) dbg "usage: bad-arg='${1:-}'"; echo "usage: il-jump [toggle|left|right]" >&2; exit 2 ;;
-esac
-if [ "$dir" = left ]; then step=-800; want=mac; else step=800; want=nastralis; fi
+mac_side || dbg "side-unknown: no single left/right link for '$SCREEN' in $SERVERCONF, assuming the Mac is on the left"
+if ! resolve "${1:-toggle}"; then
+    dbg "usage: bad-arg='${1:-}'"; echo "usage: il-jump [toggle|mac|linux|left|right|side]" >&2; exit 2
+fi
 
 # Already there. Happens when ALT+H fires at the edge while the pointer is
 # already on the Mac; shoving again would only bury it further off-screen -
@@ -207,7 +292,7 @@ hypr() { # works even from an ssh session, which has no instance signature
         hyprctl "$@" 2>/dev/null
 }
 
-aim_geom() { hypr -j --batch 'monitors; clients' | jq -rs "$AIM_JQ" 2>/dev/null; }
+aim_geom() { hypr -j --batch 'monitors; clients' | jq -rs --arg side "$MAC_SIDE" "$AIM_JQ" 2>/dev/null; }
 
 # Reads the cached aim: asking hyprctl + jq live costs ~8ms of a ~48ms leg.
 # ponytail: the cache is as fresh as the last jump (the self-check below
@@ -265,7 +350,8 @@ mac_width() { # cached; only ever asks the Mac on a cold cache
 }
 
 centre_mac() {
-    # The pointer starts pinned against the Mac's left edge and a single
+    # The pointer starts pinned against the Mac's far edge (its left edge
+    # with the Mac on the left; mirrored below for the right) and a single
     # ydotool delta lands at 2x after accel (measured 2026-09-26: 100->184,
     # 180->345, 430->859, 550->1099), so half the target x lands on it. The
     # target is the centre of the Mac window nearest this edge, which
@@ -275,6 +361,20 @@ centre_mac() {
     # sweep the Mac's hot corners. Fine for AeroSpace's full-height columns.
     tx=""
     [ -r "$MCACHE" ] && read -r tx < "$MCACHE"
+    if [ "$MAC_SIDE" = right ]; then
+        # Mirror: with the Mac on the right the overshoot pins the pointer
+        # against the Mac's RIGHT edge, so the target is (width - tx) back
+        # to the left, and the same 2x-after-accel measurement halves it:
+        # ONE move of (tx - width) / 2, negative. The width comes from the
+        # cache with a builtin read (no fork once warm; the detached check
+        # below warms it), falling back to asking the Mac.
+        mw=""
+        [ -r "$WCACHE" ] && read -r mw < "$WCACHE"
+        case "${mw:-}" in ''|*[!0-9]*) mw=$(mac_width) ;; esac
+        case "${tx:-}" in ''|*[!0-9]*) tx=$(( mw / 2 )) ;; esac
+        ydotool mousemove -- "$(( (tx - mw) / 2 ))" 0
+        return
+    fi
     case "${tx:-}" in ''|*[!0-9]*) tx=$(( $(mac_width) / 2 )) ;; esac
     ydotool mousemove -- "$(( tx / 2 ))" 0
 }
@@ -287,7 +387,7 @@ myseq="$$-$(date +%s%N)"
 printf '%s\n' "$myseq" > "$SEQ"
 
 dbg "dispatch: dir=$dir want=$want CUR=$CUR seq=$myseq"
-if [ "$dir" = left ]; then shove 10; else shove 3; fi
+shove "$burst"
 
 # Drop any modifier still held from the keybind so it cannot stick on the far
 # side. -d 0, or this alone costs ~104ms.
@@ -298,13 +398,16 @@ ydotool key -d 0 125:0 126:0 29:0 97:0 56:0 100:0 42:0 54:0 2>/dev/null || true
 # what made this feel laggy, so the check runs detached instead. If the crossing
 # did fail, the nudge only slides the pointer along this screen and the check
 # below puts it back.
-if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
+if [ "$want" = mac ]; then centre_mac; else arrive_nastralis; fi
 
 # ── detached self-check: did it actually land, and rescue it if not ──────────
 (
     exec 9>&-                        # do not hold the single-flight lock
     g=$(aim_geom)                    # refresh the aim cache off the hot path
     case "$g" in [0-9]*' '[0-9]*) printf '%s\n' "$g" > "$CCACHE.$$" && mv -f "$CCACHE.$$" "$CCACHE" ;; esac
+    # Mac on the right: centre_mac needs the Mac's width on every hop there,
+    # so warm the cache here - one ssh per boot at most, never on the hot path.
+    [ "$MAC_SIDE" = right ] && [ ! -s "$WCACHE" ] && mac_width >/dev/null
     landed 12 && exit 0              # ~1.2s; the side file flips after ~450ms
 
     [ "$(cat "$SEQ" 2>/dev/null)" = "$myseq" ] || { dbg "superseded: seq=$myseq now=$(cat "$SEQ" 2>/dev/null)"; exit 0; }   # a newer jump owns it now
@@ -312,7 +415,7 @@ if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
 
     shove 14                         # one harder retry
     if landed 15; then
-        if [ "$dir" = left ]; then centre_mac; else arrive_nastralis; fi
+        if [ "$want" = mac ]; then centre_mac; else arrive_nastralis; fi
         exit 0
     fi
 
