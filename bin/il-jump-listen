@@ -8,7 +8,13 @@
 # `aim <x>` is il-jump-mac, just after a hop request, reporting where on the
 # Mac the next hop there should land (HOP-05); il-jump reads it from $MCACHE.
 #
-# Only known directions are accepted: this is reachable by anything that can
+# Verbs: linux, mac, toggle, left (go that way) pass straight to il-jump.
+# `right` runs `il-jump linux`: every il-jump-mac ever shipped sends `right`
+# to mean "back to Linux", and resolving it as a direction would push a
+# Mac-right user's press toward the Mac instead. A new il-jump-mac sends
+# `linux` once it has seen this listener's side line (below).
+#
+# Only known verbs are accepted: this is reachable by anything that can
 # write to the Mac-side socket.
 
 set -u
@@ -19,9 +25,26 @@ echo ready
 
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
+# Tell the Mac which side of this screen it sits on, as `side <left|right>`
+# on STDERR - never stdout, and never folded into the ready line:
+#  - in every deployed il-hop-pipe, stdout after `ready` becomes the socket
+#    listener's stdin (it is exec'd onto that pipe), so an extra stdout line
+#    would be relayed to a socket client and can kill the listener on EPIPE
+#    with today's Mac scripts;
+#  - `ready side=...` breaks the deployed pipes' exact-match handshake;
+#  - a second blocking read in the pipe would hang forever against an old
+#    listener;
+#  - ssh carries stderr on its own channel: old pipes discard it (launchd's
+#    StandardErrorPath is /dev/null), new pipes keep it in
+#    ~/.local/state/il-hop.side.
+# Hops below run with stderr discarded so that file stays this one line.
+side=$("$HOME/.local/bin/il-jump" side 2>/dev/null)
+case "$side" in left|right) printf 'side %s\n' "$side" >&2 ;; esac
+
 while read -r d x; do
     case "$d" in
-        right|toggle) "$HOME/.local/bin/il-jump" "$d" </dev/null ;;
+        right) "$HOME/.local/bin/il-jump" linux </dev/null 2>/dev/null ;;
+        linux|mac|toggle|left) "$HOME/.local/bin/il-jump" "$d" </dev/null 2>/dev/null ;;
         aim) case "$x" in ''|*[!0-9]*) ;; *) printf '%s\n' "$x" > "$RUN/il-mac-aim" ;; esac ;;
     esac
 done
