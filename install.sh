@@ -116,6 +116,21 @@ install_linux() {
         warn "no ~/.config/hypr/user.lua - bind ALT+C to '$BIN/ilhop toggle' yourself"
     fi
 
+    # The hop's distances are exact only with no pointer acceleration on the
+    # ydotool device (see il-jump: HOW THE CROSSING WORKS). Harmless to add
+    # blind, unlike a bind: the name ydotoold gives its pointer is the default.
+    ydev=$(hypr devices -j | jq -r '.mice[].name | select(startswith("ydotoold"))' 2>/dev/null)
+    if [ -f "$HOME/.config/hypr/user.lua" ]; then
+        for d in ${ydev:-ydotoold-virtual-device-1}; do
+            add_line "$HOME/.config/hypr/user.lua" \
+                "hl.device({ name = \"$d\", accel_profile = \"flat\" }) -- ilhop" \
+                "name = \"$d\", accel_profile = \"flat\"" ''
+        done
+        hypr reload >/dev/null
+    else
+        warn "no ~/.config/hypr/user.lua - give the ydotoold pointer accel_profile = flat yourself, or hops land off target"
+    fi
+
     ssh -o BatchMode=yes -o ConnectTimeout=5 "${ILHOP_MAC_HOST:-mac}" true 2>/dev/null \
         || warn "cannot ssh to '${ILHOP_MAC_HOST:-mac}' without a password yet (see README: ssh)"
 }

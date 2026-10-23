@@ -41,6 +41,16 @@ if ydotool mousemove -- 0 0 >/dev/null 2>&1; then
 else
     fail "ydotool cannot reach the daemon (stale socket?)   -> systemctl --user restart ydotoold"
 fi
+# Every hop distance assumes 1:1 motion on ydotoold's pointer (il-jump: HOW
+# THE CROSSING WORKS). Read the config, not the pointer: this moves nothing.
+ydev=$(hypr devices -j | jq -r '.mice[].name | select(startswith("ydotoold"))' 2>/dev/null)
+for d in ${ydev:-ydotoold-virtual-device-1}; do
+    if grep -rqs "name = \"$d\", accel_profile = \"flat\"" "$HOME/.config/hypr"; then
+        pass "$d has a flat accel profile (hop distances are exact)"
+    else
+        fail "$d has no flat accel profile - hops land off target   -> add to ~/.config/hypr/user.lua: hl.device({ name = \"$d\", accel_profile = \"flat\" }) -- ilhop"
+    fi
+done
 # ydotoold (a user unit) writes /dev/uinput and il-heldmods reads
 # /dev/input/event*: name the exact reason either would fail (PKG-01 #2).
 if [ ! -e /dev/uinput ]; then
@@ -92,7 +102,17 @@ EOF
 ll=${ll:-?} lm=${lm:--} l2m=${l2m:--} m2l=${m2l:--}
 js=$("$HOME/.local/bin/il-jump" side 2>/dev/null)
 case "$l2m" in left) back=right ;; right) back=left ;; *) back= ;; esac
-if [ -z "$back" ]; then
+if [ "$l2m" = both ] || [ "$m2l" = both ]; then
+    # Wrap-around: the mouse crosses at both side edges; the first link listed
+    # is where the Mac really sits, and il-jump must read that, not fall back.
+    if [ "$l2m" != both ] || [ "$m2l" != both ]; then
+        fail "server.conf: half wrap-around ($ll->$lm: $l2m, $lm->$ll: $m2l)   -> list both 'left = ' and 'right = ' under each of $ll: and $lm:"
+    elif [ "$js" != left ] && [ "$js" != right ]; then
+        fail "server.conf: wrap-around links but il-jump reads '${js:-nothing}' - parser disagreement, report it"
+    else
+        pass "server.conf: wrap-around - the mouse crosses at both side edges; the Mac sits on the $js (listed first, il-jump agrees)"
+    fi
+elif [ -z "$back" ]; then
     [ "$l2m" = many ] && why="$ll links to $lm on both sides" || why="no left/right link from $ll to $lm"
     fail "server.conf: $why   -> section: links needs exactly '$ll: <left|right> = $lm' and '$lm: <the other> = $ll' (ilhop side left|right writes them once both exist)"
 elif [ "$m2l" != left ] && [ "$m2l" != right ]; then
