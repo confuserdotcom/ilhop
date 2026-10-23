@@ -93,3 +93,27 @@ Before starting: from the Mac, open `ssh ryuk` in a terminal and leave it open, 
 10. **Flip and back.** `ilhop side left`. Doctor says left, and the Mac's il-hop.side shows `side left` after the redial. Either move the Mac to the left physically, or keep it where it is, accept that the mouse crossing is reversed relative to the desk, and test the keyboard hop only. Repeat 3-5 with mirrored expectations: the Mac lands at the window nearest its RIGHT edge, Linux at its leftmost window. Then `ilhop side right` to match the desk again, and re-run step 1's doctor.
 
 Pass = every step as described. Any failure: `ilhop reset` over the open ssh, then report the failing step. Do not patch at the keyboard.
+
+## Gate run 2026-10-23 (driven by Claude over ssh; author not at the keyboard)
+
+Installed on both machines; server.conf set to Mac-right. Hops driven by
+calling the scripts ALT+C runs (`ilhop toggle` on Linux, `il-jump-mac` on the
+Mac); landings checked with `il-cursortrace --landed`.
+
+| Step | Result |
+|---|---|
+| 0 old Mac vs new Linux | pass: old il-jump-mac (`right`) hopped back via the new listener |
+| 1 `ilhop side right` + doctor | pass: 25 ok / 0 failed, "Mac is on the right ... il-jump agrees" |
+| 2 Mac install | pass: il-hop.side = `side right`, socket up |
+| 3-4 both directions | pass: 3/3 round trips landed; L->M 25-37ms |
+| 5 hold Alt + repeated C | NOT tested: held keys cannot be simulated. 8 fast alternating hops all landed, heldmods empty |
+| 6 physical mouse crossing | NOT tested (needs a hand) |
+| 7 two-window landing | NOT tested (one window on the Mac workspace) |
+| 8 harness | pass: repro --all 194 ok / 0 failed; doctor --test 28 ok / 0 failed. Run over ssh, so cursorpos stillness checks were skipped (warn) |
+| 9 latency | out 24-47ms, back 40-67ms (one 67ms outlier; then 52/40/47). 10 armed hops: 0 side-unknown. Reset from the Mac: pointer home on Linux |
+| 10 flip left and back | pass: Mac file followed (side left, then side right); hops landed both ways; doctor 25/0 after flipping back |
+
+Installer bug found and fixed in f3909a3: over ssh it added a duplicate
+ALT+C bind to user.lua (removed by hand on ryuk).
+
+Gate status: PARTIAL. Steps 5, 6, 7 need the author at the keyboard.
