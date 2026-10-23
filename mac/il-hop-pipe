@@ -24,6 +24,14 @@ CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
 LINUX_HOST="${ILHOP_LINUX_HOST:-ryuk}"   # ssh alias for the Linux machine
 SOCK="$HOME/.local/state/il-hop.sock"
 IN="$SOCK.in"
+# This session's ssh stderr. On a new Linux it carries il-jump-listen's
+# `side <left|right>` line (see il-jump-listen for why stderr), plus anything
+# ssh or il-jump print. Truncated as each session (or failed connect) starts,
+# kept after it ends: a last-known side beats unknown, and the side only
+# changes through `ilhop side`, which forces a redial. With no side line
+# il-jump-mac sends the legacy `right`, which every listener still hops on.
+# il-jump-mac and il-aim-mac read it.
+SIDEF="$HOME/.local/state/il-hop.side"
 mkdir -p "${SOCK%/*}"
 rm -f "$SOCK" "$IN"
 mkfifo "$IN"
@@ -32,7 +40,7 @@ mkfifo "$IN"
 {
     /usr/bin/ssh -T -S none -o BatchMode=yes -o ConnectTimeout=30 \
         -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
-        "$LINUX_HOST" .local/bin/il-jump-listen <>"$IN"
+        "$LINUX_HOST" .local/bin/il-jump-listen <>"$IN" 2>"$SIDEF"
     rm -f "$SOCK"
     pkill -f "nc -lkU $SOCK"
 } | {
