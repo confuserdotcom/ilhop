@@ -4,7 +4,7 @@
 # change, so a window closed or moved after the last alt-c does not leave the
 # next Ryuk->Mac hop aiming at a spot that is now empty (the ponytail in
 # il-jump-mac). Same pick as il-jump-mac: centre x of the window nearest the
-# right edge on the focused workspace, screen centre if there is none.
+# edge facing Ryuk on the focused workspace, screen centre if there is none.
 #
 # Aim only, never focus: this fires while you are working on the Mac, and
 # il-jump-mac already focuses the landing window as you leave.
@@ -13,23 +13,35 @@
 # the Mac sends its own aim anyway.
 
 SOCK="$HOME/.local/state/il-hop.sock"
+SIDEF="$HOME/.local/state/il-hop.side"   # see il-hop-pipe
 [ -S "$SOCK" ] || exit 0
+
+# Same side read as il-jump-mac: the last exact `side left|right` line.
+mside=
+if [ -r "$SIDEF" ]; then
+    while read -r k v; do
+        [ "$k" = side ] || continue
+        case "$v" in left|right) mside=$v ;; esac
+    done < "$SIDEF"
+fi
 
 # AeroSpace fires the hook before it has re-laid the tiles out.
 sleep 0.3
 
 x=$(/usr/bin/osascript -l JavaScript -e '
-function run(ids) {
+function run(a) {
     ObjC.import("CoreGraphics"); ObjC.import("AppKit");
-    const want = new Set(ids.map(Number));
+    const side = a[0], want = new Set(a.slice(1).map(Number));
     const ws = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(
         $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0)))
         .filter(w => want.has(w.kCGWindowNumber));
     if (!ws.length) return Math.round($.NSScreen.mainScreen.frame.size.width / 2);
     const r = w => w.kCGWindowBounds.X + w.kCGWindowBounds.Width;
-    const w = ws.reduce((a, b) => r(b) > r(a) ? b : a);
+    const l = w => w.kCGWindowBounds.X;
+    const w = side === "right" ? ws.reduce((a, b) => l(b) < l(a) ? b : a)
+                               : ws.reduce((a, b) => r(b) > r(a) ? b : a);
     return Math.round(w.kCGWindowBounds.X + w.kCGWindowBounds.Width / 2);
-}' $(aerospace list-windows --workspace focused --format '%{window-id}') 2>/dev/null)
+}' "${mside:-unknown}" $(aerospace list-windows --workspace focused --format '%{window-id}') 2>/dev/null)
 
 [ -n "$x" ] && printf 'aim %s\n' "$x" | /usr/bin/nc -U "$SOCK" 2>/dev/null
 exit 0

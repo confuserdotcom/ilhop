@@ -154,7 +154,7 @@ uninstall() {
     done
     rm -f "$MANIFEST"; rmdir "$DATA" "$CFG" 2>/dev/null
     if [ "$OS" = Darwin ]; then
-        rm -f "$HOME/.local/state/il-hop.sock" "$HOME/.local/state/il-hop.sock.in"
+        rm -f "$HOME/.local/state/il-hop.sock" "$HOME/.local/state/il-hop.sock.in" "$HOME/.local/state/il-hop.side"
         aerospace reload-config >/dev/null 2>&1
     else
         systemctl --user daemon-reload
