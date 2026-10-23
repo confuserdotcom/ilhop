@@ -1050,6 +1050,17 @@ mode_side_conf() {
     [ "$(cksum < "$C")" = "$sum" ] && [ ! -e "$C.bak" ] && pass "side-conf[h]: file untouched, no .bak" \
                                                        || fail "side-conf[h]: file changed or .bak created"
 
+    # (f') an unmirrored pair is fixed by changing only the wrong half.
+    for req in right left; do
+        printf 'section: links\n\tNastralis:\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" > "$C"
+        cp "$C" "$SD/orig"; rm -f "$C.bak"
+        sbx_side "$req" >/dev/null 2>&1; rc=$?
+        exp="Nastralis $M $req $( [ "$req" = left ] && echo right || echo left )"
+        [ "$rc" -eq 0 ] && [ "$(sbx_side --links)" = "$exp" ] \
+            && pass "side-conf[f': unmirrored, ilhop side $req]: mirrored as $(sbx_side --links)" \
+            || fail "side-conf[f': unmirrored, ilhop side $req]: exit $rc, links '$(sbx_side --links)', expected '$exp'"
+    done
+
     # (i) a dotfile symlink stays a symlink; its target takes the change.
     rm -f "$C" "$C.bak"; mkdir -p "$SD/dots"; fixture_conf left "$SD/dots/server.conf"
     ln -s "$SD/dots/server.conf" "$C"
