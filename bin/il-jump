@@ -105,9 +105,11 @@ AIM_JQ='(.[0] | map(select(.focused))[0] // .[0]) as $m
       | "\((.at[0] + .size[0] / 2) | floor) \((.at[1] + .size[1] / 2) | floor) \(.address)" end'
 
 # Which side of this screen the Mac is on, from server.conf's links (D-1).
-# Prints left or right only when this screen's block has exactly one
-# left/right link; anything else (no links section, no block for this
-# screen, both sides linked) prints nothing and the caller falls back.
+# Prints left or right when this screen's block has exactly one left/right
+# link, or one of each (wrap-around: the mouse crosses at both edges) - then
+# the FIRST one listed is where the Mac really sits and the way ALT+C walks.
+# Anything else (no links section, no block for this screen, two links the
+# same way) prints nothing and the caller falls back.
 #  - `#` comments are stripped; only `section: links` .. `end` counts.
 #  - A line ending in `:` with no `=` opens a screen block; it is this
 #    screen's when its name, whitespace and colon removed, equals $me
@@ -122,8 +124,8 @@ SIDE_AWK='{ sub(/#.*/, ""); l = tolower($0); gsub(/[ \t\r]/, "", l) }
     l == "end" { inl = 0; blk = 0; next }
     l !~ /=/ && l ~ /:$/ { blk = (substr(l, 1, length(l) - 1) == tolower(me)); next }
     blk && l ~ /=/ { d = l; sub(/=.*/, "", d); sub(/\(.*/, "", d)
-        if (d == "left" || d == "right") { c++; s = d } }
-    END { if (c == 1) print s }'
+        if (d == "left" || d == "right") { c++; if (c == 1) s = d; seen[d] = 1 } }
+    END { if (c == 1 || (c == 2 && seen["left"] && seen["right"])) print s }'
 
 # Sets MAC_SIDE; returns 1 and assumes left when the conf cannot say (D-2).
 mac_side() {
