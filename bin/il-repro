@@ -53,6 +53,9 @@
 #                                       fixture server.confs - no motion
 #   il-repro --listen                 D-5 il-jump-listen contract against a
 #                                       stub il-jump - no motion
+#   il-repro --side-conf              D-6/D-7 server.conf side parse and the
+#                                       ilhop side rewrite, on fixtures - no
+#                                       motion, no restarts
 #   il-repro --reset-race             DIAG-02: reset and a hop never interleave
 #   il-repro --arm                    creates the route-2 arm switch
 #   il-repro --disarm                 removes it
@@ -62,7 +65,7 @@
 #                                       + --cursor-crash-loop + --retry-forced
 #                                       + --watcher-parser + --selfcheck-rescue
 #                                       + --aim + --resolve + --listen
-#                                       + --reset-race
+#                                       + --side-conf + --reset-race
 #
 # This script never simulates a keypress and never invokes il-jump through
 # the keybind - ydotool key events do not fire Hyprland keybinds at all
@@ -86,6 +89,8 @@ JUMP="$SELFDIR/il-jump"
 [ -x "$JUMP" ] || JUMP="$HOME/.local/bin/il-jump"
 LISTEN="$SELFDIR/il-jump-listen"
 [ -x "$LISTEN" ] || LISTEN="$HOME/.local/bin/il-jump-listen"
+MACSIDE="$SELFDIR/il-mac-side"
+[ -x "$MACSIDE" ] || MACSIDE="$HOME/.local/bin/il-mac-side"
 SIDEWATCH="$HOME/.local/bin/il-side-watch"
 ORACLE="$HOME/.local/bin/il-cursortrace"
 STATE="$RUN/il-side"
@@ -145,6 +150,11 @@ if [ -z "$PURE" ]; then
         exit 1
     fi
     ORIG="$CUR"
+    # The live modes below follow the Mac's real side, so every substituted
+    # direction is today's literal when the Mac is on the left (D-7).
+    MAC_DIR=$("$JUMP" side 2>/dev/null)
+    case "$MAC_DIR" in left|right) ;; *) MAC_DIR=left ;; esac
+    if [ "$MAC_DIR" = left ]; then LINUX_DIR=right; else LINUX_DIR=left; fi
 fi
 
 # A fresh directory under the sandbox root, in $SD; the caller points HOME,
@@ -177,9 +187,10 @@ sbx_jump() {
 
 # ── Route 3: force the side file to $want, invoke il-jump $dir, and assert
 # the refusal proves itself end to end ───────────────────────────────────────
-inject_case() { # $1 = dir (left/right), $2 = want (the value that makes the guard fire)
+inject_case() { # $1 = verb, $2 = want (the value that makes the guard fire), $3 = the dir= it logs (default $1)
     dir=$1
     want=$2
+    ldir=${3:-$1}
     head "inject-noop: $dir (side file forced to '$want')"
 
     # Case 1/2 + 3: debug ON. Exit 0, exactly one new log line naming the
@@ -211,8 +222,8 @@ inject_case() { # $1 = dir (left/right), $2 = want (the value that makes the gua
         fail "expected exactly one new log line, got ${new_lines:-0}"
     fi
     case "$new_text" in
-        *already-on-side*"$dir"*"$want"*)
-            pass "log line names the refusal, the direction, and the compared values"
+        *"already-on-side: dir=$ldir "*"want=$want"*)
+            pass "log line names the refusal, the direction ($ldir), and the compared values"
             ;;
         *)
             fail "log line missing or does not name refusal/direction/values: ${new_text:-<no new line>}"
@@ -254,8 +265,11 @@ inject_case() { # $1 = dir (left/right), $2 = want (the value that makes the gua
 
 mode_inject_noop() {
     head "il-repro --inject-noop (Route 3: deliberate wrong-value injection, D-21)"
-    inject_case left  mac
-    inject_case right nastralis
+    inject_case "$MAC_DIR"   mac
+    inject_case "$LINUX_DIR" nastralis
+    # The neutral verbs refuse the same way, logging the resolved direction.
+    inject_case mac   mac       "$MAC_DIR"
+    inject_case linux nastralis "$LINUX_DIR"
 }
 
 # ── Route 1: loop the decision table's refusal combinations ────────────────
@@ -310,8 +324,8 @@ mode_stress() {
     head "il-repro --stress ($n iterations x 2 refusal combinations, zero pointer motion, Route 1)"
     i=1
     while [ "$i" -le "$n" ]; do
-        stress_iter left  mac        "$i/left"
-        stress_iter right nastralis  "$i/right"
+        stress_iter "$MAC_DIR"   mac        "$i/$MAC_DIR"
+        stress_iter "$LINUX_DIR" nastralis  "$i/$LINUX_DIR"
         i=$((i + 1))
     done
     pass "stress: $n iterations x 2 combinations completed"
@@ -333,7 +347,7 @@ mode_stress_live() {
     start=$(cat "$STATE" 2>/dev/null)
     i=1
     while [ "$i" -le "$n" ]; do
-        [ "$(cat "$STATE" 2>/dev/null)" = mac ] && { "$JUMP" right >/dev/null 2>&1; sleep 2; }
+        [ "$(cat "$STATE" 2>/dev/null)" = mac ] && { "$JUMP" linux >/dev/null 2>&1; sleep 2; }
         t0=$(date +%s%3N); "$JUMP" toggle >/dev/null 2>&1; t1=$(date +%s%3N); sleep 2
         [ "$(cat "$STATE" 2>/dev/null)" = mac ] && pass "round $i: hop to the Mac: $((t1 - t0))ms" \
                                                   || fail "round $i: hop to the Mac did not land"
@@ -344,7 +358,7 @@ mode_stress_live() {
     done
     if [ "$(cat "$STATE" 2>/dev/null)" != "$start" ]; then
         warn "starting side ($start) not restored by the round trips -- forcing it back"
-        if [ "$start" = mac ]; then "$JUMP" left >/dev/null 2>&1; else "$JUMP" right >/dev/null 2>&1; fi
+        if [ "$start" = mac ]; then "$JUMP" mac >/dev/null 2>&1; else "$JUMP" linux >/dev/null 2>&1; fi
         sleep 2
     fi
 }
@@ -421,7 +435,7 @@ mode_watcher_gap() {
         fail "expected the injected wrong value ($WRONG) to survive the restart untouched, got '$CUR' -- the watcher may have re-derived it from somewhere"
     fi
 
-    if [ "$WRONG" = mac ]; then dirtest=left; else dirtest=right; fi
+    if [ "$WRONG" = mac ]; then dirtest=$MAC_DIR; else dirtest=$LINUX_DIR; fi
     cbefore_sz=$(logsize)
     ILHOP_DEBUG=1 "$JUMP" "$dirtest" >/dev/null 2>&1
     crc=$?
@@ -597,7 +611,7 @@ RETRY="$RUN/il-jump.retry"
 mode_retry_forced() {
     head "il-repro --retry-forced (D-17: a same-direction press inside the window forces the hop through, ROOTCAUSE property 1)"
 
-    if [ "$ORIG" = mac ]; then dir=left; want=mac; other=right; else dir=right; want=nastralis; other=left; fi
+    if [ "$ORIG" = mac ]; then dir=$MAC_DIR; want=mac; other=$LINUX_DIR; else dir=$LINUX_DIR; want=nastralis; other=$MAC_DIR; fi
 
     retry_case() { # $1=label $2=marker-dir(or "none") $3=marker-age-ms $4=expect(force|refuse)
         rlabel=$1; rdir=$2; rage=$3; rexpect=$4
@@ -716,7 +730,7 @@ mode_watcher_parser() {
 mode_selfcheck_rescue() {
     head "il-repro --selfcheck-rescue (ROADMAP criterion 5: the detached self-check rescues a hop the watcher never confirms)"
 
-    if [ "$ORIG" = mac ]; then near=mac; far=nastralis; dirtest=right; else near=nastralis; far=mac; dirtest=left; fi
+    if [ "$ORIG" = mac ]; then near=mac; far=nastralis; dirtest=$LINUX_DIR; else near=nastralis; far=mac; dirtest=$MAC_DIR; fi
 
     rescue_cleanup() { systemctl --user start il-side-watch.service >/dev/null 2>&1; }
     trap rescue_cleanup EXIT INT TERM
@@ -789,8 +803,8 @@ mode_selfcheck_rescue() {
         warn "the oracle reports input-leap's capture is not local (landed(nastralis) failed) - informational, not a fail: see 01-06-SUMMARY.md for why this signal is not cleanly attributable on a live, actively-used machine"
     fi
 
-    # Within tolerance of the aim point (HOP-05: the window nearest the left
-    # edge, else the monitor centre) - computed by il-jump's own pick through
+    # Within tolerance of the aim point (HOP-05: the window nearest the edge
+    # facing the Mac, else the monitor centre) - computed by il-jump's own pick through
     # its IL_JUMP_AIM_TEST seam, so the target compared against is the real
     # one, not a guess. $pos was captured immediately after the sleep above,
     # before the oracle's own probe could perturb it.
@@ -835,7 +849,7 @@ mode_selfcheck_rescue() {
     real_now=$(cat "$STATE" 2>/dev/null)
     if [ "$real_now" != "$ORIG" ]; then
         warn "real position ($real_now) differs from where this mode started ($ORIG) -- forcing it back"
-        if [ "$ORIG" = mac ]; then "$JUMP" left >/dev/null 2>&1; else "$JUMP" right >/dev/null 2>&1; fi
+        if [ "$ORIG" = mac ]; then "$JUMP" mac >/dev/null 2>&1; else "$JUMP" linux >/dev/null 2>&1; fi
         sleep 1
     fi
 
@@ -963,6 +977,88 @@ aim 12a'
     done
 }
 
+# ── D-6/D-7: server.conf as the one source of the side ──────────────────────
+# il-jump's hot-path parse and il-mac-side's analysis and rewrite, on fixture
+# confs in a sandbox HOME. Every rewrite runs with IL_MAC_SIDE_DRY=1, so no
+# service is restarted and nothing is killed.
+sbx_side() {
+    HOME="$SD" XDG_CONFIG_HOME="$SD/.config" XDG_RUNTIME_DIR="$SD/run" ILHOP_SCREEN=Nastralis \
+        IL_MAC_SIDE_DRY=1 "$MACSIDE" "$@"
+}
+side_case() { # $1=label $2=expected il-jump side $3=expected --links
+    sc_side=$(sbx_jump side 2>/dev/null); sc_links=$(sbx_side --links)
+    [ "$sc_side" = "$2" ] && pass "side-conf[$1]: il-jump side = $sc_side" \
+                          || fail "side-conf[$1]: il-jump side = '$sc_side', expected $2"
+    [ "$sc_links" = "$3" ] && pass "side-conf[$1]: --links = $sc_links" \
+                           || fail "side-conf[$1]: --links = '$sc_links', expected '$3'"
+    sc_label=$1
+    set -- $sc_links
+    case "${3:-}" in left|right)
+        [ "$sc_side" = "$3" ] && pass "side-conf[$sc_label]: il-jump agrees with the links' Linux->Mac direction" \
+                              || fail "side-conf[$sc_label]: il-jump says '$sc_side', links say '$3'" ;;
+    esac
+}
+mode_side_conf() {
+    head "il-repro --side-conf (D-6/D-7: the side lives in server.conf only; ilhop side rewrites it safely)"
+    sandbox || { fail "side-conf: could not make a sandbox"; return; }
+    C="$SD/.config/InputLeap/server.conf"
+    M=Macbook-Air.local
+
+    fixture_conf left "$C";  side_case "a: Mac left"  left  "Nastralis $M left right"
+    fixture_conf right "$C"; side_case "b: Mac right" right "Nastralis $M right left"
+    printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links   # the desk\n\tnastralis:\t# me\n\t\tright(0,100) = %s(0,100)   # the Mac\n\t%s:\n\t\tleft(0,100)\t=\tNastralis(0,100)\nend\n' "$M" "$M" "$M" > "$C"
+    side_case "c: ranges, comments, tabs, lowercase header" right "nastralis $M right left"
+    fixture_conf none "$C"; side_case "d: no links section" left "Nastralis $M - -"
+    note=$(sbx_jump side 2>&1 >/dev/null)
+    [ -n "$note" ] && pass "side-conf[d]: il-jump side notes the fallback on stderr" \
+                   || fail "side-conf[d]: no stderr note for the fallback"
+    printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tleft = %s\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" "$M" > "$C"
+    side_case "e: linked on both sides" left "Nastralis $M many right"
+    printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" > "$C"
+    side_case "f: unmirrored" right "Nastralis $M right right"
+
+    # (g) rewrite, idempotence, and the way back.
+    fixture_conf left "$C"; cp "$C" "$SD/orig"
+    out=$(sbx_side right 2>&1); rc=$?
+    [ "$rc" -eq 0 ] && pass "side-conf[g]: ilhop side right exits 0" || fail "side-conf[g]: ilhop side right exit $rc: $out"
+    [ "$(sbx_side --links)" = "Nastralis $M right left" ] && pass "side-conf[g]: links now read right/left" \
+                                                          || fail "side-conf[g]: links read '$(sbx_side --links)'"
+    [ "$(sbx_jump side 2>/dev/null)" = right ] && pass "side-conf[g]: il-jump side = right on the next call" \
+                                                || fail "side-conf[g]: il-jump side = '$(sbx_jump side 2>/dev/null)'"
+    cmp -s "$C.bak" "$SD/orig" && pass "side-conf[g]: .bak is byte-identical to the original" \
+                                || fail "side-conf[g]: .bak differs from the original"
+    [ "$(wc -l < "$C")" -eq "$(wc -l < "$SD/orig")" ] && pass "side-conf[g]: line count unchanged" \
+                                                      || fail "side-conf[g]: line count changed"
+    dl=$(diff "$SD/orig" "$C" | grep -c '^<')
+    [ "$dl" -eq 2 ] && pass "side-conf[g]: exactly two lines differ" || fail "side-conf[g]: $dl lines differ, expected 2"
+    case "$out" in *"would: systemctl"*) pass "side-conf[g]: dry run prints would: lines, restarts nothing" ;;
+                   *) fail "side-conf[g]: no would: lines in: $out" ;; esac
+    sum=$(cksum < "$C")
+    out=$(sbx_side right 2>&1)
+    case "$out" in *already*) pass "side-conf[g]: second ilhop side right says already" ;;
+                   *) fail "side-conf[g]: second run said: $out" ;; esac
+    [ "$(cksum < "$C")" = "$sum" ] && pass "side-conf[g]: second run left the file untouched" \
+                                   || fail "side-conf[g]: second run changed the file"
+    sbx_side left >/dev/null 2>&1
+    cmp -s "$C" "$SD/orig" && pass "side-conf[g]: ilhop side left restores the original byte for byte" \
+                           || fail "side-conf[g]: ilhop side left did not restore the original"
+
+    # (h) refuses a conf with no links, touching nothing.
+    rm -f "$C.bak"; fixture_conf none "$C"; sum=$(cksum < "$C")
+    sbx_side right >/dev/null 2>&1; rc=$?
+    [ "$rc" -eq 1 ] && pass "side-conf[h]: no links section: exit 1" || fail "side-conf[h]: exit $rc, expected 1"
+    [ "$(cksum < "$C")" = "$sum" ] && [ ! -e "$C.bak" ] && pass "side-conf[h]: file untouched, no .bak" \
+                                                       || fail "side-conf[h]: file changed or .bak created"
+
+    # (i) a dotfile symlink stays a symlink; its target takes the change.
+    rm -f "$C" "$C.bak"; mkdir -p "$SD/dots"; fixture_conf left "$SD/dots/server.conf"
+    ln -s "$SD/dots/server.conf" "$C"
+    sbx_side right >/dev/null 2>&1
+    [ -L "$C" ] && pass "side-conf[i]: server.conf is still a symlink" || fail "side-conf[i]: the symlink was replaced"
+    [ "$(sbx_side --links)" = "Nastralis $M right left" ] && pass "side-conf[i]: the target carries the change" \
+                                                          || fail "side-conf[i]: target reads '$(sbx_side --links)'"
+}
+
 # ── DIAG-02: reset and a hop can never interleave ────────────────────────────
 # il-reset's IL_RESET_DRY seam takes the real lock and holds it, skipping the
 # service restarts. Both directions of the race: reset waits for a hop in
@@ -996,7 +1092,7 @@ mode_reset_race() {
 }
 
 mode_all() {
-    head "il-repro --all (--inject-noop + --stress + --watcher-gap + --cursor-crash-loop + --retry-forced + --watcher-parser + --selfcheck-rescue + --aim + --resolve + --listen + --reset-race; --stress-live excluded)"
+    head "il-repro --all (--inject-noop + --stress + --watcher-gap + --cursor-crash-loop + --retry-forced + --watcher-parser + --selfcheck-rescue + --aim + --resolve + --listen + --side-conf + --reset-race; --stress-live excluded)"
     mode_inject_noop
     mode_stress
     mode_watcher_gap
@@ -1007,6 +1103,7 @@ mode_all() {
     mode_aim
     mode_resolve
     mode_listen
+    mode_side_conf
     mode_reset_race
 }
 
@@ -1049,6 +1146,9 @@ case "${1:---inject-noop}" in
     --listen)
         mode_listen
         ;;
+    --side-conf)
+        mode_side_conf
+        ;;
     --arm)
         mode_arm
         ;;
@@ -1063,7 +1163,7 @@ case "${1:---inject-noop}" in
         mode_all
         ;;
     *)
-        echo "usage: il-repro [--inject-noop|--stress [--iterations N]|--stress-live [--iterations N]|--watcher-gap|--cursor-crash-loop|--retry-forced|--watcher-parser|--selfcheck-rescue|--aim|--resolve|--listen|--reset-race|--arm|--disarm|--report [--lines N]|--all]" >&2
+        echo "usage: il-repro [--inject-noop|--stress [--iterations N]|--stress-live [--iterations N]|--watcher-gap|--cursor-crash-loop|--retry-forced|--watcher-parser|--selfcheck-rescue|--aim|--resolve|--listen|--side-conf|--reset-race|--arm|--disarm|--report [--lines N]|--all]" >&2
         printf '\n%s check(s) ok, %s failed\n' "$ok" "$bad"
         exit 2
         ;;

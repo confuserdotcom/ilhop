@@ -2,7 +2,9 @@
 # ilhop - one name for every command (PKG-04). The il-* names it runs keep
 # working on their own, so existing binds never have to change.
 #
-#   ilhop [toggle|left|right]   hop (default: toggle)        il-jump
+#   ilhop [toggle|mac|linux|left|right]
+#                               hop (default: toggle)        il-jump
+#   ilhop side [left|right]     where the Mac sits / move it  il-mac-side
 #   ilhop doctor [--test]       health check, --test adds a live round trip
 #   ilhop reset                 panic button: unstick input, pointer home
 #   ilhop repro [--mode]        scripted checks               il-repro
@@ -21,11 +23,12 @@ run() { # $1 = il-* suffix; the sibling of this file first, then PATH
 }
 
 case "${1:-toggle}" in
-    toggle|left|right) run jump "${1:-toggle}" ;;
+    toggle|mac|linux|left|right) run jump "${1:-toggle}" ;;
     hop)        shift; run jump "$@" ;;
     doctor|reset|repro|heldmods|side-watch) c=$1; shift; run "$c" "$@" ;;
     trace)      shift; run cursortrace "$@" ;;
     listen)     shift; run jump-listen "$@" ;;
-    -h|--help|help) sed -n '2,13s/^# \{0,1\}//p' "$0" ;;
+    side)       shift; run mac-side "$@" ;;
+    -h|--help|help) sed -n '2,15s/^# \{0,1\}//p' "$0" ;;
     *) echo "ilhop: unknown command '$1' (ilhop help)" >&2; exit 2 ;;
 esac

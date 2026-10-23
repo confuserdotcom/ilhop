@@ -20,7 +20,10 @@ will not work without changes.
 | input-leap | `input-leaps --use-ei` as a systemd user service named `input-leap-server`, at `--debug INFO` | `input-leapc` connected to it |
 | Tools | `ydotool`, `jq`, `ssh`, `flock`, a C compiler, systemd | `nc`, `osascript` (both ship with macOS) |
 
-The Mac must be the **left** neighbour of the Linux screen in `server.conf`:
+The Mac may sit on either side of the Linux screen. ilhop never stores the
+side: it reads it on every hop from the links in input-leap's `server.conf`,
+which input-leap needs to match your desk for the mouse anyway. They must
+link the two screens both ways, mirrored. Mac on the left:
 
 ```
 section: links
@@ -30,6 +33,23 @@ section: links
         right = <linux-screen>
 end
 ```
+
+Mac on the right:
+
+```
+section: links
+    <linux-screen>:
+        right = <mac-screen>
+    <mac-screen>:
+        left = <linux-screen>
+end
+```
+
+After moving the Mac to the other side, run `ilhop side left` or
+`ilhop side right` on Linux. It rewrites just those two lines (keeping
+`server.conf.bak`), restarts input-leap, and redials the Mac's session so
+the Mac relearns the side within seconds. `ilhop side` alone prints the
+side ilhop is using.
 
 Keep `input-leap-server` at `--debug INFO`: ilhop follows its journal to know
 which machine has the pointer, and `DEBUG` floods it.
@@ -72,12 +92,17 @@ The installer:
 
 `./install.sh --link` symlinks instead of copying, for working on ilhop itself.
 
+Upgrading, the order does not matter: an old Mac with a new Linux, or a new
+Mac with an old Linux, still hops both ways on ALT+C.
+
 ## Use
 
 | Command | What it does |
 |---|---|
 | `ilhop` / `ilhop toggle` | Hop to the other machine (what ALT+C runs on Linux) |
-| `ilhop left` / `ilhop right` | Hop to the Mac / back to Linux |
+| `ilhop mac` / `ilhop linux` | Hop to the Mac / back to Linux |
+| `ilhop left` / `ilhop right` | Hop that way, to whichever machine sits there |
+| `ilhop side [left\|right]` | Print which side the Mac is on, or move it there in `server.conf` |
 | `ilhop doctor` | Check every moving part, with the fix for each failure |
 | `ilhop doctor --test` | Also do a real round trip and time it |
 | `ilhop reset` | Panic button: release every modifier, restart the input services, bring the pointer home |
@@ -113,7 +138,7 @@ own with an `ilhop` comment.
   stock input-leap update replaces it; `ilhop doctor` warns when that happens.
 - **The Mac landing aims only horizontally.** Moving the pointer vertically
   would sweep through the Mac's hot corners. With two windows stacked on the
-  right-hand side of the Mac, the pointer may land in the one that does not
+  side of the Mac facing Linux, the pointer may land in the one that does not
   have focus.
 - **The landing spot is worked out when you last left a machine.** If a window
   moves or closes while you are on the other side, the next hop can land on
@@ -121,4 +146,7 @@ own with an `ilhop` comment.
 - **Right after sleep or a network change**, the Mac's fast connection takes
   a second or two to come back. ALT+C on the Mac still works in that window;
   it just goes over a slower fresh ssh.
-- One monitor per machine, and the Mac always on the left.
+- **After `ilhop side`, the Mac's landing pick catches up on the redial.** The
+  hop direction follows the change on the very next press; the Mac learns
+  which of its edges faces Linux only once its session reconnects (seconds).
+- One monitor per machine, side by side (left or right, not above or below).
