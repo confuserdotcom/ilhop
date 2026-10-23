@@ -32,13 +32,11 @@ JUMP="$(dirname "$(readlink -f "$0")")/il-jump"
 #  - LINUX: this screen's name as written in the links section, else $me.
 #  - MAC: the target of LINUX's single left/right link; else the single
 #    other screen in `section: screens`; else `-`.
-#  - L2M / M2L: left, right, `both` (one of each: wrap-around, the first
-#    listed is the real side), `-` (none) or `many`, counting LINUX's links
+#  - L2M / M2L: left, right, `-` (none) or `many`, counting LINUX's links
 #    that target MAC, and MAC's links that target LINUX.
-LINKS_AWK='function cnt(from, to,   k, n, s, seen) {
+LINKS_AWK='function cnt(from, to,   k, n, s) {
         n = 0
-        for (k = 1; k <= nl; k++) if (lb[k] == from && tolower(lt[k]) == to) { n++; s = ld[k]; seen[ld[k]] = 1 }
-        if (n == 2 && ("left" in seen) && ("right" in seen)) return "both"
+        for (k = 1; k <= nl; k++) if (lb[k] == from && tolower(lt[k]) == to) { n++; s = ld[k] }
         return n == 0 ? "-" : (n == 1 ? s : "many")
     }
     { w = $0; sub(/#.*/, "", w); gsub(/[ \t\r]/, "", w); l = tolower(w) }
@@ -60,9 +58,8 @@ LINKS_AWK='function cnt(from, to,   k, n, s, seen) {
         m = tolower(me)
         linux = (m in bname) ? bname[m] : me
         c = 0
-        for (k = 1; k <= nl; k++) if (lb[k] == m) { c++; mac = lt[k]; if (c == 1) lt1 = lt[k]; if (c == 2) lt2 = lt[k] }
-        if (c == 2 && tolower(lt1) == tolower(lt2)) mac = lt1
-        else if (c != 1) {
+        for (k = 1; k <= nl; k++) if (lb[k] == m) { c++; mac = lt[k] }
+        if (c != 1) {
             mac = "-"; o = 0
             for (i = 1; i <= ns; i++) if (tolower(scr[i]) != m) { o++; cand = scr[i] }
             if (o == 1) mac = cand
@@ -112,10 +109,6 @@ if [ -z "$conf" ] || [ ! -r "$conf" ]; then
 fi
 set -- $(links "$conf")
 linux=${1:-$SCREEN} mac=${2:--} l2m=${3:--} m2l=${4:--}
-if [ "$l2m" = both ] || [ "$m2l" = both ]; then
-    echo "il-mac-side: $SERVERCONF links the Mac on both sides (wrap-around); il-jump uses the first one listed. Swap the order of the two lines under each screen to change it. Nothing was changed." >&2
-    exit 1
-fi
 ok=
 case "$l2m" in left|right) case "$m2l" in left|right) ok=1 ;; esac ;; esac
 if [ -z "$ok" ]; then
