@@ -95,13 +95,23 @@ install_linux() {
     done
 
     # ALT+C. Ryoku's Hyprland reads hl.bind() from ~/.config/hypr/user.lua.
-    if hyprctl binds -j 2>/dev/null | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/dev/null 2>&1; then
+    # Run over ssh there is no instance signature, so find it as il-doctor
+    # does; if Hyprland still cannot be asked, never add a bind blind - a
+    # second ALT+C bind fires two toggles per press (there and straight back).
+    hypr() {
+        HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}" \
+            hyprctl "$@" 2>/dev/null
+    }
+    binds=$(hypr binds -j)
+    if [ -z "$binds" ]; then
+        warn "cannot reach Hyprland, ALT+C left alone - if it is not bound, bind it to '$BIN/ilhop toggle'"
+    elif printf '%s' "$binds" | jq -e 'any(.[]; (.key|ascii_downcase)=="c" and .modmask==8)' >/dev/null 2>&1; then
         say "ALT+C is already bound, left alone (make sure it runs: ilhop toggle)"
     elif [ -f "$HOME/.config/hypr/user.lua" ]; then
         add_line "$HOME/.config/hypr/user.lua" \
             'hl.bind("ALT + C", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/ilhop toggle")) -- ilhop' \
             'ilhop toggle' ''
-        hyprctl reload >/dev/null 2>&1
+        hypr reload >/dev/null
     else
         warn "no ~/.config/hypr/user.lua - bind ALT+C to '$BIN/ilhop toggle' yourself"
     fi
