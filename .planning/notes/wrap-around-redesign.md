@@ -1,4 +1,4 @@
-# Wrap-around: hop without edge walls (built 2026-10-23, keypress gate PENDING)
+# Wrap-around: hop without edge walls (built 2026-10-23, author gate PASSED, merged)
 
 Goal (author): cross at BOTH side edges with the mouse (Mac linked left and
 right of Linux, and vice versa) while ALT+C still always lands.
@@ -39,8 +39,7 @@ wrap the burst ran off the far edge and ping-ponged (44 switches / 6 hops).
   capture probes and reruns were clean.
 - doctor 27/0, doctor --test: to Mac 33-47ms, back 48-55ms; repro --all 206/0.
 
-## Still open
-- Author gate: hold Alt + repeated C (>= 6 presses, both ways), physical mouse
-  crossing at all four side edges, two-window landing.
-- Then merge `wrap-hop` into main and reinstall the Mac copy (unchanged
-  Mac scripts, so optional).
+## Author gate
+2026-10-23: author confirmed at the keyboard ("yep it works"): hold Alt +
+repeated C, physical crossing at the side edges, two-window landing.
+Merged into main.
