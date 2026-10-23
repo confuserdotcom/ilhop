@@ -84,8 +84,27 @@ else
     warn "no 'has connected' in the last 10 min - the Mac may be asleep or off"
 fi
 conf="$HOME/.config/InputLeap/server.conf"
-grep -qE '^[[:space:]]*left *= *[^[:space:]]' "$conf" 2>/dev/null \
-    && pass "server.conf: the Mac is the LEFT link" || fail "server.conf: no left link (ilhop assumes the Mac sits to the LEFT)"
+# One counted check: the links must name the Mac on exactly one side, link
+# back mirrored, and read the same through il-jump's own hot-path parser.
+read -r ll lm l2m m2l <<EOF
+$("$HOME/.local/bin/il-mac-side" --links 2>/dev/null)
+EOF
+ll=${ll:-?} lm=${lm:--} l2m=${l2m:--} m2l=${m2l:--}
+js=$("$HOME/.local/bin/il-jump" side 2>/dev/null)
+case "$l2m" in left) back=right ;; right) back=left ;; *) back= ;; esac
+if [ -z "$back" ]; then
+    [ "$l2m" = many ] && why="$ll links to $lm on both sides" || why="no left/right link from $ll to $lm"
+    fail "server.conf: $why   -> section: links needs exactly '$ll: <left|right> = $lm' and '$lm: <the other> = $ll' (ilhop side left|right writes them once both exist)"
+elif [ "$m2l" != left ] && [ "$m2l" != right ]; then
+    [ "$m2l" = many ] && n=several || n=no
+    fail "server.conf: $ll.$l2m = $lm but $lm has $n left/right link back to $ll   -> exactly '$back = $ll' under $lm: in section: links"
+elif [ "$m2l" != "$back" ]; then
+    fail "server.conf: links not mirrored ($ll.$l2m = $lm, $lm.$m2l = $ll)   -> ilhop side $l2m"
+elif [ "$js" != "$l2m" ]; then
+    fail "server.conf: the links say the Mac is on the $l2m but il-jump reads '${js:-nothing}' - parser disagreement, report it"
+else
+    pass "server.conf: the Mac is on the $l2m ($ll.$l2m = $lm, $lm.$back = $ll; il-jump agrees)"
+fi
 grep -qE '^[[:space:]]*switchDelay' "$conf" 2>/dev/null \
     && warn "server.conf still sets switchDelay - that reintroduces the laggy edge" \
     || pass "server.conf: no switchDelay (edges cross instantly)"
@@ -186,7 +205,7 @@ if [ "${1:-}" = "--test" ]; then
     }
 
     start=$(cat "$RUN/il-side" 2>/dev/null)
-    [ "$start" = mac ] && { "$HOME/.local/bin/il-jump" right >/dev/null 2>&1; sleep 2; }
+    [ "$start" = mac ] && { "$HOME/.local/bin/il-jump" linux >/dev/null 2>&1; sleep 2; }
 
     t0=$(date +%s%3N); "$HOME/.local/bin/il-jump" toggle >/dev/null 2>&1; t1=$(date +%s%3N); sleep 2
     if "$ORACLE" --landed mac >/dev/null 2>&1; then

@@ -1,0 +1,163 @@
+#!/bin/sh
+# Which side of this screen the Mac sits on, and moving it (ilhop side).
+#
+#   il-mac-side              print the side il-jump will use (left|right)
+#   il-mac-side left|right   put the Mac there: rewrite server.conf's two
+#                            link lines, restart input-leap, redial the Mac
+#   il-mac-side --links      machine-readable: LINUX MAC L2M M2L
+#
+# server.conf's `section: links` is the single source of truth (D-1).
+# input-leap needs those links to match the desk for the physical mouse
+# anyway, so il-jump reads them live on every hop and nothing else in ilhop
+# stores the side. This script is the one thing that writes them.
+
+set -u
+
+# Per-machine settings (ilhop config, written by install.sh); defaults match
+# the original two machines.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ilhop/config"
+[ -r "$CONF" ] && . "$CONF"
+SCREEN="${ILHOP_SCREEN:-$(uname -n)}"   # this machine's input-leap screen name (--name)
+SERVERCONF="$HOME/.config/InputLeap/server.conf"   # the same file il-jump reads
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# The sibling il-jump, as ilhop's run() finds it, so this also works from a
+# checkout and under a sandboxed HOME.
+JUMP="$(dirname "$(readlink -f "$0")")/il-jump"
+[ -x "$JUMP" ] || JUMP="$HOME/.local/bin/il-jump"
+
+# Prints `LINUX MAC L2M M2L`. Same parsing rules as il-jump's SIDE_AWK:
+# `#` comments stripped, whitespace ignored, `(a,b)` ranges stripped, names
+# compared case-insensitively as strings - never used as a regex.
+#  - LINUX: this screen's name as written in the links section, else $me.
+#  - MAC: the target of LINUX's single left/right link; else the single
+#    other screen in `section: screens`; else `-`.
+#  - L2M / M2L: left, right, `-` (none) or `many`, counting LINUX's links
+#    that target MAC, and MAC's links that target LINUX.
+LINKS_AWK='function cnt(from, to,   k, n, s) {
+        n = 0
+        for (k = 1; k <= nl; k++) if (lb[k] == from && tolower(lt[k]) == to) { n++; s = ld[k] }
+        return n == 0 ? "-" : (n == 1 ? s : "many")
+    }
+    { w = $0; sub(/#.*/, "", w); gsub(/[ \t\r]/, "", w); l = tolower(w) }
+    l ~ /^section:/ { sec = substr(l, 9); blk = ""; next }
+    l == "end" { sec = ""; blk = ""; next }
+    l !~ /=/ && l ~ /:$/ {
+        n = substr(w, 1, length(w) - 1)
+        if (sec == "screens") scr[++ns] = n
+        if (sec == "links") { blk = tolower(n); bname[blk] = n }
+        next
+    }
+    sec == "links" && blk != "" && l ~ /=/ {
+        d = l; sub(/=.*/, "", d); sub(/\(.*/, "", d)
+        if (d != "left" && d != "right") next
+        t = w; sub(/^[^=]*=/, "", t); sub(/\(.*/, "", t)
+        nl++; lb[nl] = blk; ld[nl] = d; lt[nl] = t
+    }
+    END {
+        m = tolower(me)
+        linux = (m in bname) ? bname[m] : me
+        c = 0
+        for (k = 1; k <= nl; k++) if (lb[k] == m) { c++; mac = lt[k] }
+        if (c != 1) {
+            mac = "-"; o = 0
+            for (i = 1; i <= ns; i++) if (tolower(scr[i]) != m) { o++; cand = scr[i] }
+            if (o == 1) mac = cand
+        }
+        print linux, mac, cnt(m, tolower(mac)), cnt(tolower(mac), m)
+    }'
+
+# Rewrites the conf on stdin: in the links section, LINUX's left/right line
+# targeting MAC gets direction $to, and MAC's line targeting LINUX gets $back.
+# Only the leading direction token changes; indentation, ranges and trailing
+# comments pass through byte for byte, as does every other line.
+REWRITE_AWK='function swap(s, new,   pre, rest) {
+        match(s, /^[ \t]*/); pre = substr(s, 1, RLENGTH); rest = substr(s, RLENGTH + 1)
+        if (tolower(substr(rest, 1, 4)) == "left") rest = substr(rest, 5)
+        else rest = substr(rest, 6)
+        return pre new rest
+    }
+    { w = $0; sub(/#.*/, "", w); gsub(/[ \t\r]/, "", w); l = tolower(w) }
+    l ~ /^section:/ { sec = substr(l, 9); blk = ""; print; next }
+    l == "end" { sec = ""; blk = ""; print; next }
+    sec == "links" && l !~ /=/ && l ~ /:$/ { blk = substr(l, 1, length(l) - 1); print; next }
+    sec == "links" && l ~ /=/ {
+        d = l; sub(/=.*/, "", d); sub(/\(.*/, "", d)
+        t = l; sub(/^[^=]*=/, "", t); sub(/\(.*/, "", t)
+        if (d == "left" || d == "right") {
+            if (blk == tolower(linux) && t == tolower(mac)) { print swap($0, to); next }
+            if (blk == tolower(mac) && t == tolower(linux)) { print swap($0, back); next }
+        }
+    }
+    { print }'
+
+links() { awk -v me="$SCREEN" "$LINKS_AWK" "$1" 2>/dev/null; }
+opp() { if [ "$1" = left ]; then echo right; else echo left; fi; }
+
+case "${1:-}" in
+    '') exec "$JUMP" side ;;
+    --links) links "$SERVERCONF"; exit ;;
+    left|right) ;;
+    *) echo "usage: il-mac-side [left|right|--links]" >&2; exit 2 ;;
+esac
+
+want=$1
+conf=$(readlink -f "$SERVERCONF" 2>/dev/null)
+if [ -z "$conf" ] || [ ! -r "$conf" ]; then
+    echo "il-mac-side: cannot read $SERVERCONF" >&2
+    exit 1
+fi
+set -- $(links "$conf")
+linux=${1:-$SCREEN} mac=${2:--} l2m=${3:--} m2l=${4:--}
+ok=
+case "$l2m" in left|right) case "$m2l" in left|right) ok=1 ;; esac ;; esac
+if [ -z "$ok" ]; then
+    [ "$mac" = - ] && mac='<the Mac screen>'
+    {
+        echo "il-mac-side: $SERVERCONF needs exactly one link each way between $linux and $mac (found $linux->$mac: $l2m, $mac->$linux: $m2l)."
+        echo "Its section: links must contain:"
+        printf '    %s:\n        %s = %s\n    %s:\n        %s = %s\n' "$linux" "$want" "$mac" "$mac" "$(opp "$want")" "$linux"
+        echo "Nothing was changed."
+    } >&2
+    exit 1
+fi
+back=$(opp "$want")
+if [ "$l2m" = "$want" ] && [ "$m2l" = "$back" ]; then
+    echo "already $want: server.conf has the Mac on the $want"
+    exit 0
+fi
+
+# Build and check the new conf next to the old one, so the final mv is an
+# atomic rename and a failure anywhere leaves the original untouched.
+tmp="$conf.ilhop.$$"
+trap 'rm -f "$tmp"' EXIT INT TERM
+cp -p "$conf" "$tmp" || exit 1
+awk -v linux="$linux" -v mac="$mac" -v to="$want" -v back="$back" "$REWRITE_AWK" "$conf" > "$tmp" || exit 1
+bad=
+[ "$(wc -l < "$tmp")" -eq "$(wc -l < "$conf")" ] || bad="line count changed"
+set -- $(links "$tmp")
+[ "${3:-} ${4:-}" = "$want $back" ] || bad="${bad:-the rewrite does not read back as $want/$back (got ${3:-?}/${4:-?})}"
+d=$(diff "$conf" "$tmp")
+[ "$(printf '%s\n' "$d" | grep -c '^<')" -eq 2 ] && [ "$(printf '%s\n' "$d" | grep -c '^>')" -eq 2 ] \
+    || bad="${bad:-the rewrite touched more than the two link lines}"
+if [ -n "$bad" ]; then
+    echo "il-mac-side: refusing to write $conf: $bad. Nothing was changed." >&2
+    exit 1
+fi
+cp -p "$conf" "$conf.bak" || exit 1
+mv -f "$tmp" "$conf" || exit 1
+trap - EXIT INT TERM
+
+# The cached aims were picked for the old side's edges. input-leap reads its
+# links only at start. Killing the listener makes the Mac's pipe redial
+# (launchd ThrottleInterval 5s), and the new listener tells it the new side.
+if [ -n "${IL_MAC_SIDE_DRY:-}" ]; then
+    echo "would: rm -f $RUN/il-ryuk-aim $RUN/il-mac-aim"
+    echo "would: systemctl --user restart input-leap-server.service"
+    echo "would: pkill -u $(id -u) -f il-jump-listen"
+else
+    rm -f "$RUN/il-ryuk-aim" "$RUN/il-mac-aim"
+    systemctl --user restart input-leap-server.service
+    pkill -u "$(id -u)" -f il-jump-listen
+fi
+echo "server.conf: the Mac is now on the $want (was $l2m; backup $conf.bak)"
+"$JUMP" side
