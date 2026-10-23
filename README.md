@@ -92,8 +92,11 @@ The installer:
 
 `./install.sh --link` symlinks instead of copying, for working on ilhop itself.
 
-Upgrading, the order does not matter: an old Mac with a new Linux, or a new
-Mac with an old Linux, still hops both ways on ALT+C.
+Upgrading, either machine can go first: an old Mac with a new Linux, or a
+new Mac with an old Linux, still hops both ways on ALT+C. One exception
+while they differ: with the Mac on the right, an old Mac whose fast session
+is down falls back to `il-jump right`, which a new Linux reads as "toward
+the Mac", so that press does nothing. Upgrade the Mac soon after Linux.
 
 ## Use
 

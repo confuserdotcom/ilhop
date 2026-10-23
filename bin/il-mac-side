@@ -12,6 +12,7 @@
 # stores the side. This script is the one thing that writes them.
 
 set -u
+set -f   # screen names pass through word splitting below; never glob them
 
 # Per-machine settings (ilhop config, written by install.sh); defaults match
 # the original two machines.
@@ -137,7 +138,9 @@ bad=
 set -- $(links "$tmp")
 [ "${3:-} ${4:-}" = "$want $back" ] || bad="${bad:-the rewrite does not read back as $want/$back (got ${3:-?}/${4:-?})}"
 d=$(diff "$conf" "$tmp")
-[ "$(printf '%s\n' "$d" | grep -c '^<')" -eq 2 ] && [ "$(printf '%s\n' "$d" | grep -c '^>')" -eq 2 ] \
+# One line when only half of an unmirrored pair was wrong, two otherwise.
+dn=$(printf '%s\n' "$d" | grep -c '^<'); dp=$(printf '%s\n' "$d" | grep -c '^>')
+[ "$dn" -eq "$dp" ] && [ "$dn" -ge 1 ] && [ "$dn" -le 2 ] \
     || bad="${bad:-the rewrite touched more than the two link lines}"
 if [ -n "$bad" ]; then
     echo "il-mac-side: refusing to write $conf: $bad. Nothing was changed." >&2
