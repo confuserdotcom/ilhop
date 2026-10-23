@@ -101,7 +101,11 @@ The installer:
 - **Linux:** copies the commands to `~/.local/bin`, builds `il-heldmods`,
   installs and starts `il-side-watch.service` (and `ydotoold.service` if you
   do not already have one), and binds ALT+C in `~/.config/hypr/user.lua`
-  unless ALT+C is already bound.
+  unless ALT+C is already bound. It also gives ydotoold's virtual pointer a
+  flat acceleration profile there (`hl.device({ ..., accel_profile = "flat" })`):
+  the hop moves the pointer by exact distances and libinput's default
+  acceleration would scale them by up to 2x. Only that virtual device
+  changes; your own mouse keeps its feel.
 - **Mac:** copies three scripts to `~/.local/bin`, loads the `ilhop.hop-pipe`
   launchd agent, and adds `alt-c` and `on-focus-changed` to `aerospace.toml`
   (it leaves either alone if you already set it, and tells you what to add).
@@ -170,4 +174,11 @@ own with an `ilhop` comment.
 - **After `ilhop side`, the Mac's landing pick catches up on the redial.** The
   hop direction follows the change on the very next press; the Mac learns
   which of its edges faces Linux only once its session reconnects (seconds).
+- **The Mac landing is a little less reliable than the hop itself.** The
+  first motion after the crossing is dropped by input-leap, so the hop
+  sends throwaways first. If the landing move is still dropped, the pointer
+  sits at the Mac's edge for ~0.3s until a background check moves it.
+  Keyboard focus is right either way.
+- **Macs wider than 2400 logical pixels** need a fourth step on the way back
+  (`burst` in `il-jump`).
 - One monitor per machine, side by side (left or right, not above or below).
