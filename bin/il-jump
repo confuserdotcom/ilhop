@@ -36,7 +36,8 @@
 # TO THE MAC (cross_mac + centre_mac)
 #  - Warp the pointer 1px inside the edge that faces the Mac (compositor, exact
 #    and free), then one 5px push: it crosses every time and enters the Mac
-#    ENTRY px in from its edge facing Linux (measured 8, Mac on the right).
+#    ENTRY px in from its edge pixel facing Linux (measured 4 on either side:
+#    input-leap logs `switch ... at 4,y` / `at 1465,y` on a 1470px Mac).
 #    y is the monitor's middle, which keeps the Mac's hot corners out of it.
 #  - The first motion after the crossing is dropped: input-leap freezes the
 #    compositor pointer at once but starts forwarding a few ms later
@@ -80,7 +81,7 @@ WCACHE="$RUN/il-mac-width"
 CCACHE="$RUN/il-ryuk-aim"     # "x y [address]" where a hop here lands, refreshed off the hot path
 MCACHE="$RUN/il-mac-aim"      # x on the Mac to land at; il-jump-mac sends it as you leave the Mac
 ECACHE="$RUN/il-ryuk-edge"    # "x y": 1px inside the edge facing the Mac, where cross_mac warps to
-ENTRY=8                       # px in from its Linux-facing edge where the Mac pointer enters (measured)
+ENTRY=4                       # px in from its Linux-facing edge pixel where the Mac pointer enters (measured)
 YSOCK="$RUN/.ydotool_socket"
 DBGLOG="$RUN/ilhop-debug.log" # ILHOP_DEBUG-gated refusal log (D-11, D-12)
 DBGARM="$RUN/ilhop-debug.on"  # file present = debug on, without exporting the var
@@ -424,6 +425,19 @@ mac_target() {
 # Where the pointer entered the Mac: ENTRY px in from the edge facing Linux.
 entry_x() { if [ "$MAC_SIDE" = right ]; then echo "$ENTRY"; else echo "$(( mw - 1 - ENTRY ))"; fi; }
 
+# Is the pointer on this machine? One 1px vertical move: the compositor
+# pointer follows it here, and stays frozen while input-leap holds it for the
+# Mac (where the same 1px lands, harmlessly). The side file only says what
+# journald last reported; before shoving again this asks the pointer itself,
+# because with wrap-around a shove on the wrong machine crosses on over the
+# far edge.
+on_linux() {
+    p0=$(hypr cursorpos); py=${p0#*, }; d=1
+    case "$py" in ''|*[!0-9]*) : ;; *) [ "$py" -gt 100 ] && d=-1 ;; esac   # never into a clamping edge
+    ydotool mousemove -- 0 "$d"; sleep 0.05; p1=$(hypr cursorpos)
+    [ -n "$p0" ] && [ "$p0" != "$p1" ]
+}
+
 # ONE move from the entry point to the target, 1:1 under the flat profile.
 # ponytail: x only - y stays at the monitor middle cross_mac warped to.
 centre_mac() {
@@ -487,7 +501,13 @@ if [ "$want" = mac ]; then ydotool mousemove -- 0 1; centre_mac; else arrive_nas
     read_side; [ "$CUR" = unknown ] && { dbg "watcher-unknown: dir=$dir want=$want, cannot judge landing"; exit 0; }        # watcher down, cannot judge
 
     # One more try, the same bounded way: an unbounded shove would cross on
-    # past the far edge when both edges are linked.
+    # past the far edge when both edges are linked. But first ask the pointer
+    # where it is: a late side file must not send it round again.
+    if on_linux; then here=nastralis; else here=mac; fi
+    if [ "$here" = "$want" ]; then
+        dbg "retry-skipped: dir=$dir want=$want, the pointer is already there (side file late)"
+        exit 0
+    fi
     dbg "retry: dir=$dir want=$want"
     if [ "$want" = mac ]; then cross_mac; ydotool mousemove -- 0 1; else shove "$burst"; fi
     if landed 15; then
