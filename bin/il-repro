@@ -1013,7 +1013,19 @@ mode_side_conf() {
     [ -n "$note" ] && pass "side-conf[d]: il-jump side notes the fallback on stderr" \
                    || fail "side-conf[d]: no stderr note for the fallback"
     printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tleft = %s\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" "$M" > "$C"
-    side_case "e: linked on both sides" left "Nastralis $M many right"
+    side_case "e: half wrap (Linux both, Mac one)" left "Nastralis $M both right"
+    # Full wrap-around, real side listed first: the mouse crosses at both
+    # edges, ALT+C walks the first-listed way, ilhop side refuses to guess.
+    printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tright = %s\n\t\tleft = %s\n\t%s:\n\t\tleft = Nastralis\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" "$M" > "$C"
+    side_case "w: wrap-around, right listed first" right "Nastralis $M both both"
+    note=$(sbx_jump side 2>&1 >/dev/null)
+    [ -z "$note" ] && pass "side-conf[w]: no fallback note for a wrap" || fail "side-conf[w]: unexpected stderr: $note"
+    sum=$(cksum < "$C"); sbx_side left >/dev/null 2>&1; rc=$?
+    [ "$rc" -eq 1 ] && [ "$(cksum < "$C")" = "$sum" ] && pass "side-conf[w]: ilhop side left refuses a wrap, file untouched" \
+                                                     || fail "side-conf[w]: ilhop side left exit $rc or changed the file"
+    printf 'section: links\n\tNastralis:\n\t\tright = %s\n\t\tright = %s\nend\n' "$M" "$M" > "$C"
+    [ "$(sbx_jump side 2>/dev/null)" = left ] && pass "side-conf[w2]: two links the same way still fall back to left" \
+                                               || fail "side-conf[w2]: il-jump side = '$(sbx_jump side 2>/dev/null)'"
     printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" > "$C"
     side_case "f: unmirrored" right "Nastralis $M right right"
 

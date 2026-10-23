@@ -45,6 +45,24 @@ section: links
 end
 ```
 
+Want the mouse to cross at **both** side edges (wrap-around)? Link both
+ways under each screen. List the side the Mac really sits on first: ALT+C
+walks that way, and the Mac's landing pick uses it.
+
+```
+section: links
+    <linux-screen>:
+        right = <mac-screen>
+        left = <mac-screen>
+    <mac-screen>:
+        left = <linux-screen>
+        right = <linux-screen>
+end
+```
+
+`ilhop side` refuses to rewrite a wrap-around conf; swap the line order by
+hand to change the real side.
+
 After moving the Mac to the other side, run `ilhop side left` or
 `ilhop side right` on Linux. It rewrites just those two lines (keeping
 `server.conf.bak`), restarts input-leap, and redials the Mac's session so
