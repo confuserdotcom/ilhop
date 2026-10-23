@@ -47,10 +47,17 @@ echo "il-reset: pulling the pointer back to this machine"
 # Shove AWAY from the Mac: rightward when it sits on the left, leftward when
 # it sits on the right - a fixed rightward shove would push a Mac-right
 # pointer onto the Mac. `il-jump side` takes no lock and moves nothing; any
-# failure keeps the rightward shove.
+# failure keeps the rightward shove. With wrap-around (the Mac linked on
+# both sides) there is no wall to shove against - 14 steps would cross on
+# and on - and none is needed: the server restart above already put the
+# pointer back on this machine.
 home=800
 [ "$("$HOME/.local/bin/il-jump" side 2>/dev/null)" = right ] && home=-800
-i=0; while [ "$i" -lt 14 ]; do ydotool mousemove -- "$home" 0; i=$((i + 1)); done
+links=$("$HOME/.local/bin/il-mac-side" --links 2>/dev/null)
+case " $links " in
+    *' both '*) : ;;
+    *) i=0; while [ "$i" -lt 14 ]; do ydotool mousemove -- "$home" 0; i=$((i + 1)); done ;;
+esac
 sleep 1
 HIS="${HYPRLAND_INSTANCE_SIGNATURE:-$(ls -1 "$RUN/hypr" 2>/dev/null | head -n1)}"
 HYPRLAND_INSTANCE_SIGNATURE="$HIS" hyprctl dispatch "hl.dsp.cursor.move({ x = 1280, y = 720 })" >/dev/null 2>&1

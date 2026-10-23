@@ -748,7 +748,7 @@ mode_selfcheck_rescue() {
         fail "il-jump $dirtest exited $rrc, expected 0"
     fi
 
-    printf 'waiting out the full self-check window (measured ~3.6-4.2s in practice: landed 12 x0.1s + shove 14 + landed 15 x0.1s + the recentre dispatch itself, plus margin)...\n'
+    printf 'waiting out the full self-check window (measured ~3.6-4.2s in practice: landed 12 x0.1s + bounded retry + landed 15 x0.1s + the recentre dispatch itself, plus margin)...\n'
     sleep 6
 
     # Captured immediately after the sleep, before any other check, because
@@ -889,23 +889,37 @@ mode_aim() {
     aim_case "stacked right column" right "$mon" "[$(win 0xL 1 0 0 1280 1440),$(win 0xT 1 1280 0 1280 400),$(win 0xB 1 1280 400 1280 1040)]" "1920 920 0xB"
     aim_case "one window" right "$mon" "[$(win 0xA 1 65 18 2477 1404)]" "1303 720 0xA"
     aim_case "stacked left column" right "$mon" "[$(win 0xT 1 0 0 1280 400),$(win 0xB 1 0 400 1280 1040),$(win 0xR 1 1280 0 1280 1440)]" "1920 720 0xR"
+    # Where a hop to the Mac warps before its push: 1px inside the outer
+    # edge of the monitor facing the Mac, at that monitor's middle.
+    edge_case() { # $1=label $2=Mac side $3=monitors $4=expected
+        got=$(printf '%s' "$3" | IL_JUMP_EDGE_TEST=$2 "$JUMP" 2>&1)
+        [ "$got" = "$4" ] && pass "edge[$2: $1]: $got" || fail "edge[$2: $1]: expected '$4', got '$got'"
+    }
+    two='[{"x":0,"y":0,"width":2560,"height":1440,"scale":1},{"x":2560,"y":200,"width":1920,"height":1080,"scale":1}]'
+    neg='[{"x":0,"y":0,"width":2560,"height":1440,"scale":1},{"x":-1920,"y":0,"width":1920,"height":1080,"scale":1}]'
+    edge_case "one monitor" right "$mon" "2558 720"
+    edge_case "one monitor" left "$mon" "1 720"
+    edge_case "scaled monitor" right '[{"x":0,"y":0,"width":2560,"height":1440,"scale":2}]' "1278 360"
+    edge_case "two monitors" right "$two" "4478 740"
+    edge_case "two monitors" left "$two" "1 720"
+    edge_case "monitor left of 0" left "$neg" "-1919 540"
 }
 
 # ── The hop decision, Mac on either side, from server.conf ──────────────────
 # il-jump's IL_JUMP_RESOLVE_TEST seam prints "want dir step burst" for a verb
 # and a cached side, then stops before the lock - no ydotool, no motion. The
-# expected rows are written out literally: with the Mac on the left they are
-# exactly what il-jump decided before it read the side (D-3: toward the Mac
-# = left -800 x10, back = right 800 x3).
+# expected rows are written out literally, for the hop that needs no far-edge
+# wall: toward the Mac one 5px push after the edge warp, back three 800px
+# steps.
 mode_resolve() {
     head "il-repro --resolve (D-3: verb + cached side + server.conf -> want dir step burst)"
     sandbox || { fail "resolve: could not make a sandbox"; return; }
     for conf in left right none; do
         fixture_conf "$conf" "$SD/.config/InputLeap/server.conf"
         if [ "$conf" = right ]; then
-            ms=right; to_mac="mac right 800 10"; to_linux="nastralis left -800 3"
+            ms=right; to_mac="mac right 5 1"; to_linux="nastralis left -800 3"
         else
-            ms=left;  to_mac="mac left -800 10"; to_linux="nastralis right 800 3"
+            ms=left;  to_mac="mac left -5 1"; to_linux="nastralis right 800 3"
         fi
         got=$(sbx_jump side 2>/dev/null)
         [ "$got" = "$ms" ] && pass "resolve[$conf]: il-jump side = $got" \
@@ -1013,7 +1027,19 @@ mode_side_conf() {
     [ -n "$note" ] && pass "side-conf[d]: il-jump side notes the fallback on stderr" \
                    || fail "side-conf[d]: no stderr note for the fallback"
     printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tleft = %s\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" "$M" > "$C"
-    side_case "e: linked on both sides" left "Nastralis $M many right"
+    side_case "e: half wrap (Linux both, Mac one)" left "Nastralis $M both right"
+    # Full wrap-around, real side listed first: the mouse crosses at both
+    # edges, ALT+C walks the first-listed way, ilhop side refuses to guess.
+    printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tright = %s\n\t\tleft = %s\n\t%s:\n\t\tleft = Nastralis\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" "$M" > "$C"
+    side_case "w: wrap-around, right listed first" right "Nastralis $M both both"
+    note=$(sbx_jump side 2>&1 >/dev/null)
+    [ -z "$note" ] && pass "side-conf[w]: no fallback note for a wrap" || fail "side-conf[w]: unexpected stderr: $note"
+    sum=$(cksum < "$C"); sbx_side left >/dev/null 2>&1; rc=$?
+    [ "$rc" -eq 1 ] && [ "$(cksum < "$C")" = "$sum" ] && pass "side-conf[w]: ilhop side left refuses a wrap, file untouched" \
+                                                     || fail "side-conf[w]: ilhop side left exit $rc or changed the file"
+    printf 'section: links\n\tNastralis:\n\t\tright = %s\n\t\tright = %s\nend\n' "$M" "$M" > "$C"
+    [ "$(sbx_jump side 2>/dev/null)" = left ] && pass "side-conf[w2]: two links the same way still fall back to left" \
+                                               || fail "side-conf[w2]: il-jump side = '$(sbx_jump side 2>/dev/null)'"
     printf 'section: screens\n\tNastralis:\n\t%s:\nend\nsection: links\n\tNastralis:\n\t\tright = %s\n\t%s:\n\t\tright = Nastralis\nend\n' "$M" "$M" "$M" > "$C"
     side_case "f: unmirrored" right "Nastralis $M right right"
 
