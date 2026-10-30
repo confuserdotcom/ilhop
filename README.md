@@ -1,4 +1,24 @@
-# ilhop
+<img src="docs/readme/hero.svg" width="100%" alt="ilhop: ALT+C hops the pointer and keyboard from a Hyprland window on Linux to the nearest window on a Mac running AeroSpace in about 25 ms, and ALT+C on the Mac hops back in about 10 ms.">
+
+<p align="center">
+  <b>Two computers, one keyboard, zero mouse-dragging.</b><br>
+  On Wayland, input-leap can't switch screens from the keyboard. ilhop can, in ~25 ms, and lands you in the right window.
+</p>
+
+<p align="center">
+  <a href="https://github.com/confuserdotcom/ilhop/stargazers"><img src="https://img.shields.io/github/stars/confuserdotcom/ilhop?style=flat-square&color=7c3aed" alt="Stars"></a>
+  <a href="https://github.com/confuserdotcom/ilhop/commits/main"><img src="https://img.shields.io/github/last-commit/confuserdotcom/ilhop?style=flat-square&color=7c3aed" alt="Last commit"></a>
+  <img src="https://img.shields.io/badge/Wayland-Hyprland-7c3aed?style=flat-square&logo=wayland&logoColor=white" alt="Wayland: Hyprland">
+  <img src="https://img.shields.io/badge/macOS-AeroSpace-7c3aed?style=flat-square&logo=apple&logoColor=white" alt="macOS: AeroSpace">
+  <a href="https://github.com/input-leap/input-leap"><img src="https://img.shields.io/badge/built_on-input--leap-7c3aed?style=flat-square" alt="Built on input-leap"></a>
+</p>
+
+<p align="center">
+  <a href="#what-it-runs-on">Requirements</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#use">Use</a> ·
+  <a href="#known-limits">Known limits</a>
+</p>
 
 One key moves your pointer and keyboard between a Linux machine and a Mac
 shared with [input-leap](https://github.com/input-leap/input-leap), in both
@@ -140,6 +160,10 @@ with it.
 
 The old `il-*` command names still work.
 
+### Check everything in one go
+
+<img src="docs/readme/doctor.svg" width="100%" alt="ilhop doctor --test: every check on both machines passes, then a live round trip hops to the Mac in 24 ms and back in 11 ms.">
+
 ## Uninstall
 
 On each machine, from the clone:
@@ -182,3 +206,10 @@ own with an `ilhop` comment.
 - **Macs wider than 2400 logical pixels** need a fourth step on the way back
   (`burst` in `il-jump`).
 - One monitor per machine, side by side (left or right, not above or below).
+
+---
+
+<p align="center">
+  If ilhop saved your wrist a few thousand mouse drags, <a href="https://github.com/confuserdotcom/ilhop">a ⭐ on GitHub</a> helps other Wayland + Mac users find it.<br>
+  Bugs and ideas: <a href="https://github.com/confuserdotcom/ilhop/issues">open an issue</a>.
+</p>
